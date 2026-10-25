@@ -11,7 +11,7 @@ h3{font-size:16px;margin:4px 0 8px}.hint{font-size:13px;color:#555;margin:-4px 0
 button{font-size:16px;cursor:pointer}.primary{width:100%;min-height:58px;font-size:19px;background:#e07a2f;color:#fff;border:0;border-radius:12px;margin:6px 0}.primary:disabled{opacity:.6}
 .small{min-height:48px;padding:8px 14px;border-radius:8px;border:1px solid #888;background:#fff;display:inline-flex;align-items:center;justify-content:center}
 .wide{width:100%;min-height:50px;margin:4px 0;border-radius:10px;border:1px solid #888;background:#fff}.danger{color:#b00;border-color:#b00}
-select,input[type=url],textarea{width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin:3px 0}select{min-height:48px}
+select,textarea{width:100%;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin:3px 0}select{min-height:48px}
 .line{display:flex;align-items:center;gap:8px;min-height:48px}.lbl{flex:0 0 5.5em;font-size:15px}.line select{flex:1}.val{color:#666;font-size:14px}
 .locinfo{min-height:28px;margin:4px 0}.locinfo.bad{color:#b00}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.warn{background:#fff3c4;border:2px solid #e0b000;border-radius:10px;padding:10px;margin-bottom:10px}.hidden{display:none}
@@ -23,3 +23,7 @@ select,input[type=url],textarea{width:100%;font-size:16px;padding:8px;border-rad
 .item{background:#fff;border-radius:10px;padding:8px 10px;margin-bottom:8px;display:flex;gap:8px}.item img{width:60px;height:60px;object-fit:cover;border-radius:6px}.item .st{font-size:13px;color:#c25a0a;font-weight:bold}.item .st.sent{color:#2f6f4f}
 table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #ccc;padding:6px;text-align:center;font-size:15px}
 .toast{position:fixed;left:12px;right:12px;bottom:20px;z-index:3000;background:#222;color:#fff;border-radius:10px;padding:14px;text-align:center;font-size:16px;white-space:pre-line}
+.login{border:2px solid #2f6f4f}.login h3{margin-top:0}#gsi-btn{min-height:44px;display:flex;justify-content:center;margin:6px 0}
+.item .st.remote{color:#555}
+.petwhy{margin-top:10px;padding-top:6px;border-top:1px dashed #ccc}.petwhy .opts button{min-height:48px}
+.petother{width:100%;min-height:48px;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin:8px 0 2px}.item .pet{font-size:14px;color:#7a4a00}

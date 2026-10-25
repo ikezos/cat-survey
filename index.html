@@ -25,8 +25,14 @@
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
 <section id="tab-record" class="tab active">
+  <div id="logincard" class="card login">
+    <h3>Google でログイン</h3>
+    <p class="note">研究会で登録した Google アカウントでログインすると、記録を送れます。ログインしなくても、この端末に保存はできます。</p>
+    <div id="gsi-btn"></div>
+    <p id="loginmsg" class="note"></p>
+  </div>
   <div class="auto card">
-    <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログイン後に自動で入ります</span></div>
+    <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログインしていません</span></div>
     <label class="line"><span class="lbl">区域</span><select id="area"></select></label>
     <div id="locinfo" class="locinfo">位置: 取得中…</div>
     <div class="row"><button type="button" id="btn-gps" class="small">位置を取り直す</button>
@@ -47,13 +53,15 @@
     <p class="note">人の名前や住所は書かないでください。</p>
   </div>
   <button id="btn-save" class="primary">この猫を保存する</button>
-  <p class="note">電波がなくても、この端末に保存されます(「未送信」として残ります)。</p>
+  <p class="note">電波がなくても、この端末に保存されます(「未送信」として残ります)。ログインしていて電波があれば、保存のあと自動で送ります。</p>
 </section>
 <section id="tab-list" class="tab">
   <div class="seg" id="listfilter">
     <button data-f="pending" class="active">未送信</button><button data-f="sent">送信済み</button><button data-f="all">すべて</button>
   </div>
   <button id="btn-send" class="primary">未送信を送る</button>
+  <div class="row"><button type="button" id="btn-refresh" class="small">自分の記録を取り直す</button></div>
+  <p id="sendmsg" class="note"></p>
   <div id="list"></div>
 </section>
 <section id="tab-map" class="tab">
@@ -61,24 +69,29 @@
   <div id="pickmsg" class="warn hidden">地図の、猫がいた場所をタップしてください。
     <button type="button" id="btn-pickcancel" class="small">やめる</button></div>
   <div id="map"></div>
-  <p class="note">電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
+  <p class="note">自分が記録した猫だけが出ます。電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
 </section>
 <section id="tab-stats" class="tab"><div id="stats"></div></section>
 <section id="tab-settings" class="tab">
   <div class="card">
-    <h3>送り先(あとで設定します)</h3>
-    <input id="gasurl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
-    <p class="note">この端末の中にだけ保存します。今の版では、まだ送信はしません。</p>
-    <button id="btn-savecfg" class="small">保存</button>
+    <h3>ログイン</h3>
+    <p id="authinfo" class="note"></p>
+    <button id="btn-logout" class="wide">ログアウト</button>
   </div>
   <div class="card">
-    <h3>試すとき用</h3>
-    <button id="btn-demo" class="wide">見本のデータを入れる(名古屋市内・20頭)</button>
+    <h3>送り先</h3>
+    <p id="cfginfo" class="note"></p>
+  </div>
+  <div class="card">
+    <h3>この端末</h3>
+    <button id="btn-demo" class="wide hidden">見本のデータを入れる(名古屋市内・20頭)</button>
     <button id="btn-clear" class="wide danger">この端末の記録をすべて消す</button>
+    <p class="note">消えるのはこの端末の控えだけです。送信済みの記録は受け付け側に残っています。</p>
   </div>
 </section>
 </main>
 <script src="lib/leaflet.js"></script>
+<script src="config.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
