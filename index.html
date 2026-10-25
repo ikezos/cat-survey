@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f6f4f">
+<title>地域猫 頭数調査</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="top">
+  <header><h1>地域猫 頭数調査 <small>試用版</small></h1><span id="pending" class="badge"></span></header>
+  <nav>
+    <button data-tab="record" class="active">入力</button>
+    <button data-tab="list">一覧</button>
+    <button data-tab="map">地図</button>
+    <button data-tab="stats">集計</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+<main>
+<section id="tab-record" class="tab active">
+  <div class="auto card">
+    <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログイン後に自動で入ります</span></div>
+    <label class="line"><span class="lbl">区域</span><select id="area"></select></label>
+    <div id="locinfo" class="locinfo">位置: 取得中…</div>
+    <div class="row"><button type="button" id="btn-gps" class="small">位置を取り直す</button>
+    <button type="button" id="btn-pick" class="small">地図で場所を指定</button></div>
+  </div>
+  <div id="dup" class="warn hidden"></div>
+  <div id="fields"></div>
+  <div class="card">
+    <h3>写真(任意・3枚まで)</h3>
+    <p class="note">写真の撮影場所の情報は、保存するときに消します。</p>
+    <div class="row">
+      <label class="small filebtn">カメラで撮る<input type="file" id="photo-cam" accept="image/*" capture="environment" hidden></label>
+      <label class="small filebtn">写真を選ぶ<input type="file" id="photo-pick" accept="image/*" multiple hidden></label>
+    </div>
+    <div id="thumbs" class="thumbs"></div>
+    <h3>目立つ特徴(任意)</h3>
+    <textarea id="feature" rows="2" placeholder="例: 右前足だけ白い"></textarea>
+    <p class="note">人の名前や住所は書かないでください。</p>
+  </div>
+  <button id="btn-save" class="primary">この猫を保存する</button>
+  <p class="note">電波がなくても、この端末に保存されます(「未送信」として残ります)。</p>
+</section>
+<section id="tab-list" class="tab">
+  <div class="seg" id="listfilter">
+    <button data-f="pending" class="active">未送信</button><button data-f="sent">送信済み</button><button data-f="all">すべて</button>
+  </div>
+  <button id="btn-send" class="primary">未送信を送る</button>
+  <div id="list"></div>
+</section>
+<section id="tab-map" class="tab">
+  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず</div>
+  <div id="pickmsg" class="warn hidden">地図の、猫がいた場所をタップしてください。
+    <button type="button" id="btn-pickcancel" class="small">やめる</button></div>
+  <div id="map"></div>
+  <p class="note">電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
+</section>
+<section id="tab-stats" class="tab"><div id="stats"></div></section>
+<section id="tab-settings" class="tab">
+  <div class="card">
+    <h3>送り先(あとで設定します)</h3>
+    <input id="gasurl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+    <p class="note">この端末の中にだけ保存します。今の版では、まだ送信はしません。</p>
+    <button id="btn-savecfg" class="small">保存</button>
+  </div>
+  <div class="card">
+    <h3>試すとき用</h3>
+    <button id="btn-demo" class="wide">見本のデータを入れる(名古屋市内・20頭)</button>
+    <button id="btn-clear" class="wide danger">この端末の記録をすべて消す</button>
+  </div>
+</section>
+</main>
+<script src="lib/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
