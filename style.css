@@ -27,3 +27,48 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid
 .item .st.remote{color:#555}
 .petwhy{margin-top:10px;padding-top:6px;border-top:1px dashed #ccc}.petwhy .opts button{min-height:48px}
 .petother{width:100%;min-height:48px;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin:8px 0 2px}.item .pet{font-size:14px;color:#7a4a00}
+
+.item[data-id]{cursor:pointer}.item[data-id]:active{background:#eef4ef}
+.mark{display:inline-block;font-size:12px;font-weight:bold;border-radius:10px;padding:2px 8px;margin-left:4px;vertical-align:1px}.mark.edit{background:#e6efe9;color:#2f6f4f;border:1px solid #2f6f4f}.mark.chg{background:#fff1e0;color:#a85300;border:1px solid #e07a2f}
+.pmark{color:#a85300}.popen{min-height:44px;margin-top:6px}
+.sheet{position:fixed;inset:0;z-index:2000;background:#f4f1ea;overflow-y:auto;-webkit-overflow-scrolling:touch}body.noscroll{overflow:hidden}
+.sheethead{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:10px;background:#2f6f4f;color:#fff;padding:6px 10px;min-height:56px}.sheethead .small{color:#222}
+.sheetbody{padding:10px 10px 90px}
+.dphoto{width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:6px}
+.line2{display:flex;gap:8px;padding:3px 0;font-size:16px;border-bottom:1px solid #eee}.line2 .lbl{flex:0 0 7em;color:#555;font-size:14px}
+.chg{border-left:4px solid #e07a2f;padding:2px 0 2px 8px;margin:8px 0}.chg-line{font-size:16px}
+.act{display:block;width:100%;min-height:68px;margin:8px 0;border:2px solid #2f6f4f;border-radius:12px;background:#fff;color:#1d4b34;font-size:19px;font-weight:bold;padding:8px 12px}.act small{display:block;font-size:13px;font-weight:normal;color:#555;margin-top:2px}
+.act.orange{background:#e07a2f;border-color:#e07a2f;color:#fff}.act.orange small{color:#fff}.act:disabled{opacity:.45}
+.now{font-size:14px;color:#555;margin:-2px 0 8px}.opts button.cur{border-style:dashed;border-color:#2f6f4f;color:#2f6f4f;background:#eef4ef}
+.chk input{width:28px;height:28px;flex:0 0 auto}
+
+/* 2026-10-25 えさ場・今の場所・集計・意見 */
+nav button{font-size:15px;padding:0 2px}
+.siteopts{grid-template-columns:1fr}.siteopts button{display:block;text-align:left;padding:6px 12px;min-height:52px}.siteopts button small{display:block;font-size:12px;color:#666}.siteopts button.sel small{color:#e8f3ec}
+.siteopts button.cur{border-style:dashed;border-color:#2f6f4f;color:#2f6f4f;background:#eef4ef}
+.sitetag{font-size:14px;color:#1d4b34;font-weight:bold}
+.siteicon{display:inline-block;width:20px;height:20px;background:#e8a33d;border:3px solid #fff;border-radius:3px;transform:rotate(45deg);box-shadow:0 0 0 1px #8a5a00,0 1px 3px #0006}.siteicon.sm{width:10px;height:10px;border-width:2px;margin:0 6px 0 8px;vertical-align:0}
+.siteicon-wrap{background:none;border:0;display:flex;align-items:center;justify-content:center}.siteicon-wrap .siteicon{width:20px;height:20px}
+.dot.me{background:#1c7ed6}
+.maprow{margin:2px 0 8px}#btn-here{min-height:48px;font-weight:bold;border-color:#1c7ed6;color:#1c5fa5;padding:8px 18px}
+.fl{display:block;font-size:14px;color:#555;margin:6px 0}.fl input{display:block;width:100%;min-height:48px;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin-top:3px}
+.site .row .small{min-height:44px}
+#scopebar{margin:0 0 8px}
+table.stat th{font-size:11px;padding:4px 1px;line-height:1.25;word-break:break-all;overflow-wrap:anywhere}table.stat td{font-size:14px;padding:6px 2px}table.stat td.nm{text-align:left;font-size:13px;word-break:break-all}table.stat{table-layout:fixed}table.stat th:first-child{width:25%}
+.linkbtn{display:flex;align-items:center;justify-content:center;min-height:48px;margin:6px 0;border:1px solid #2f6f4f;border-radius:10px;background:#fff;color:#1d4b34;text-decoration:none;font-size:16px;padding:6px 10px;text-align:center}
+.hidden{display:none !important}
+
+/* 2026-10-25 ログインカード・管理 */
+.cardlogin{margin-top:10px;padding-top:8px;border-top:1px dashed #9bb}.cardlogin h3{margin-top:0}
+.pinbox h3{margin-top:0}
+.pin{display:block;width:100%;min-height:64px;font-size:34px;letter-spacing:.5em;text-align:center;padding:8px;border-radius:12px;border:2px solid #2f6f4f;margin:10px 0;font-family:ui-monospace,monospace}
+.pin::placeholder{letter-spacing:.3em;color:#bbb}
+.tiny{min-height:44px;padding:4px 10px;font-size:14px;border-radius:8px;border:1px solid #888;background:#fff;margin-left:auto}
+.person{padding:10px 12px}.person.stopped{background:#f6f3f3;border:1px dashed #b00}.ptop{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pname{font-size:17px;word-break:break-all}
+.rolesel{min-height:44px;font-size:16px;border-radius:8px;border:1px solid #aaa;padding:4px 8px;margin:4px 0;max-width:100%}
+.listhead{margin:14px 0 8px}
+.person .row .small{min-height:44px;padding:6px 10px;font-size:15px}
+.printcard{text-align:center;border:2px solid #2f6f4f;padding:14px 10px}.pc-title{font-size:15px;color:#1d4b34;font-weight:bold}.pc-name{font-size:24px;font-weight:bold;margin:6px 0}
+.qr{display:block;margin:6px auto;width:min(270px,80vw);height:auto;image-rendering:pixelated}.pc-note{font-size:13px;color:#333;text-align:left;margin:8px 0 0}
+.urlbox{font-family:ui-monospace,monospace;font-size:13px;word-break:break-all;background:#f4f4f4;border:1px solid #ccc;border-radius:8px;padding:8px;user-select:all}
+@media print{body>*{display:none !important}#sheet{display:block !important;position:static;overflow:visible;background:#fff}#sheet .noprint,#sheet .warn,.toast{display:none !important}.sheetbody{padding:0}.printcard{width:85mm;margin:10mm auto;padding:6mm;border:1px solid #000;border-radius:0;box-shadow:none;page-break-inside:avoid}.qr{width:55mm}.pc-name{font-size:18pt}.pc-title{font-size:11pt}.pc-note{font-size:9pt}}

@@ -18,27 +18,40 @@
     <button data-tab="record" class="active">入力</button>
     <button data-tab="list">一覧</button>
     <button data-tab="map">地図</button>
+    <button data-tab="sites">えさ場</button>
     <button data-tab="stats">集計</button>
     <button data-tab="settings">設定</button>
+    <button data-tab="admin" id="nav-admin" class="hidden">管理</button>
   </nav>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
+<div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
 <section id="tab-record" class="tab active">
   <div id="logincard" class="card login">
     <h3>Google でログイン</h3>
     <p class="note">研究会で登録した Google アカウントでログインすると、記録を送れます。ログインしなくても、この端末に保存はできます。</p>
     <div id="gsi-btn"></div>
     <p id="loginmsg" class="note"></p>
+    <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
+    <div id="cardlogin" class="cardlogin">
+      <h3>ログインカードでログイン</h3>
+      <p class="note">研究会から受け取った<b>ログインカード</b>をお持ちの方は、カードをスマホの裏側に<b>かざす</b>か、カードの <b>QR コードをカメラで読んで</b>ください。このページが開いて、暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。</p>
+    </div>
   </div>
   <div class="auto card">
     <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログインしていません</span></div>
-    <label class="line"><span class="lbl">区域</span><select id="area"></select></label>
     <div id="locinfo" class="locinfo">位置: 取得中…</div>
     <div class="row"><button type="button" id="btn-gps" class="small">位置を取り直す</button>
     <button type="button" id="btn-pick" class="small">地図で場所を指定</button></div>
   </div>
   <div id="dup" class="warn hidden"></div>
+  <div class="card" id="sitecard">
+    <h3>えさ場(任意)</h3>
+    <div class="opts siteopts" id="sitecands"></div>
+    <p id="sitenone" class="note"></p>
+    <button type="button" id="btn-site-new" class="small">この場所を新しいえさ場に登録</button>
+  </div>
   <div id="fields"></div>
   <div class="card">
     <h3>写真(任意・3枚まで)</h3>
@@ -56,27 +69,51 @@
   <p class="note">電波がなくても、この端末に保存されます(「未送信」として残ります)。ログインしていて電波があれば、保存のあと自動で送ります。</p>
 </section>
 <section id="tab-list" class="tab">
+  <div id="listmine">
   <div class="seg" id="listfilter">
     <button data-f="pending" class="active">未送信</button><button data-f="sent">送信済み</button><button data-f="all">すべて</button>
   </div>
   <button id="btn-send" class="primary">未送信を送る</button>
   <div class="row"><button type="button" id="btn-refresh" class="small">自分の記録を取り直す</button></div>
   <p id="sendmsg" class="note"></p>
+  </div>
   <div id="list"></div>
 </section>
 <section id="tab-map" class="tab">
-  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず</div>
-  <div id="pickmsg" class="warn hidden">地図の、猫がいた場所をタップしてください。
+  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず <span class="siteicon sm"></span>えさ場 <span class="dot me"></span>今の場所</div>
+  <div class="row maprow"><button type="button" id="btn-here" class="small primaryish">📍 今の場所へ</button></div>
+  <div id="pickmsg" class="warn hidden">地図の、<span id="pickwhat">猫がいた場所</span>をタップしてください。
     <button type="button" id="btn-pickcancel" class="small">やめる</button></div>
   <div id="map"></div>
-  <p class="note">自分が記録した猫だけが出ます。電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
+  <p class="note">自分が記録した猫とえさ場だけが出ます(「全員の記録」の役割がある人は切り替えられます)。電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
+</section>
+<section id="tab-sites" class="tab">
+  <div id="sitehead" class="card">
+    <h3>えさ場</h3>
+    <p class="note">猫がよく集まる餌場・たまり場を登録しておくと、入力の時に近くのえさ場を選んで、猫をまとめられます。登録は自分用で、一覧と地図に出るのは自分の分だけです。</p>
+    <button type="button" id="btn-site-here" class="primary">今の位置でえさ場を登録</button>
+    <button type="button" id="btn-site-pick" class="wide">地図で場所を指定して登録</button>
+  </div>
+  <div id="sitelist"></div>
 </section>
 <section id="tab-stats" class="tab"><div id="stats"></div></section>
+<section id="tab-admin" class="tab"><div id="admin"></div></section>
 <section id="tab-settings" class="tab">
+  <div class="card">
+    <h3>使い方</h3>
+    <p class="note">アプリの使い方の説明です(印刷して配れる PDF もあります)。</p>
+    <a class="linkbtn" id="help-settings" href="help.html">使い方を見る</a>
+  </div>
   <div class="card">
     <h3>ログイン</h3>
     <p id="authinfo" class="note"></p>
     <button id="btn-logout" class="wide">ログアウト</button>
+  </div>
+  <div class="card" id="feedback">
+    <h3>ご意見を送る</h3>
+    <p class="note">使いにくい所・選び肢の希望などを教えてください(選び肢は、担当者がシートで変えられます)。個人の名前や住所は書かないでください。</p>
+    <a class="linkbtn" id="fb-mail" href="mailto:support@ikezos.com?subject=%E5%9C%B0%E5%9F%9F%E7%8C%AB%E9%A0%AD%E6%95%B0%E8%AA%BF%E6%9F%BB%E3%82%A2%E3%83%97%E3%83%AA%E3%81%B8%E3%81%AE%E3%81%94%E6%84%8F%E8%A6%8B">メールで送る(support@ikezos.com)</a>
+    <a class="linkbtn" id="fb-gh" href="https://github.com/ikezos/cat-survey/issues" target="_blank" rel="noopener">GitHub の Issues で送る</a>
   </div>
   <div class="card">
     <h3>送り先</h3>
@@ -90,7 +127,9 @@
   </div>
 </section>
 </main>
+<div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <script src="lib/leaflet.js"></script>
+<script src="lib/qr.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
