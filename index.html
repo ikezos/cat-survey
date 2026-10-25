@@ -4,39 +4,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
-<title>地域猫 頭数調査</title>
+<title>のら猫 頭数調査</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="lib/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="locked">
 <div class="top">
-  <header><h1>地域猫 頭数調査 <small>試用版</small></h1><span id="pending" class="badge"></span></header>
+  <header><h1>のら猫 頭数調査 <small>試用版</small></h1><span id="pending" class="badge"></span></header>
   <nav>
-    <button data-tab="record" class="active">入力</button>
+    <button data-tab="record" class="active">猫の入力</button>
+    <button data-tab="sites">えさ場</button>
     <button data-tab="list">一覧</button>
     <button data-tab="map">地図</button>
-    <button data-tab="sites">えさ場</button>
     <button data-tab="stats">集計</button>
     <button data-tab="settings">設定</button>
     <button data-tab="admin" id="nav-admin" class="hidden">管理</button>
   </nav>
+  <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
 <div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
+<div id="delbar" class="hidden"><label class="line chk"><input type="checkbox" id="showdel"><span>削除済みも見る(管理者)</span></label></div>
 <section id="tab-record" class="tab active">
   <div id="logincard" class="card login">
     <h3>Google でログイン</h3>
-    <p class="note">研究会で登録した Google アカウントでログインすると、記録を送れます。ログインしなくても、この端末に保存はできます。</p>
+    <p id="blockmsg" class="warn block hidden" role="alert"></p>
+    <p id="blockpending" class="note hidden"></p>
+    <p class="note">登録された方だけが使えます。研究会で登録した Google アカウントでログインしてください。</p>
     <div id="gsi-btn"></div>
     <p id="loginmsg" class="note"></p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
     <div id="cardlogin" class="cardlogin">
       <h3>ログインカードでログイン</h3>
-      <p class="note">研究会から受け取った<b>ログインカード</b>をお持ちの方は、カードをスマホの裏側に<b>かざす</b>か、カードの <b>QR コードをカメラで読んで</b>ください。このページが開いて、暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。</p>
+      <div id="scanbox-btn" class="scanbtnbox"><button type="button" id="btn-scan" class="primary bigbtn">📷 カードの QR を読む</button></div>
+      <p class="note">研究会から受け取った<b>ログインカード</b>をお持ちの方は、上のボタンでカードの <b>QR コード</b>を読んでください(カメラを使います)。暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。<br><b>iPhone の方は、先に「ホーム画面に追加」をして、ホーム画面のアプリを開いてから</b>読んでください(<a href="help.html#login">手順</a>)。カードをスマホの裏に<b>かざす</b>(NFC)方法もあります。</p>
     </div>
   </div>
   <div class="auto card">
@@ -48,7 +53,7 @@
   <div id="dup" class="warn hidden"></div>
   <div class="card" id="sitecard">
     <h3>えさ場(任意)</h3>
-    <div class="opts siteopts" id="sitecands"></div>
+    <select id="sitesel" class="sitesel" aria-label="えさ場"><option value="">えさ場なし(選ばない)</option></select>
     <p id="sitenone" class="note"></p>
     <button type="button" id="btn-site-new" class="small">この場所を新しいえさ場に登録</button>
   </div>
@@ -71,16 +76,19 @@
 <section id="tab-list" class="tab">
   <div id="listmine">
   <div class="seg" id="listfilter">
-    <button data-f="pending" class="active">未送信</button><button data-f="sent">送信済み</button><button data-f="all">すべて</button>
+    <button data-f="pending">未送信</button><button data-f="sent">送信済み</button><button data-f="all" class="active">すべて</button>
   </div>
   <button id="btn-send" class="primary">未送信を送る</button>
-  <div class="row"><button type="button" id="btn-refresh" class="small">自分の記録を取り直す</button></div>
+  <div class="row"><button type="button" id="btn-refresh" class="small">自分の記録を取り直す(ふだんは自動)</button></div>
   <p id="sendmsg" class="note"></p>
   </div>
+  <p id="refreshing" class="note hidden" role="status">新しくしています…</p>
+  <label class="line chk gonetoggle"><input type="checkbox" class="showgone" id="listshowgone"><span>いなくなった猫も見る<span id="listgone"></span></span></label>
   <div id="list"></div>
 </section>
 <section id="tab-map" class="tab">
-  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず <span class="siteicon sm"></span>えさ場 <span class="dot me"></span>今の場所</div>
+  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず <span class="siteicon sm"></span>えさ場 <span class="dot me"></span>今の場所 <span class="dot away"></span>いなくなった</div>
+  <label class="line chk gonetoggle"><input type="checkbox" class="showgone" id="mapshowgone"><span>いなくなった猫も見る(灰色の薄い印)</span></label>
   <div class="row maprow"><button type="button" id="btn-here" class="small primaryish">📍 今の場所へ</button></div>
   <div id="pickmsg" class="warn hidden">地図の、<span id="pickwhat">猫がいた場所</span>をタップしてください。
     <button type="button" id="btn-pickcancel" class="small">やめる</button></div>
@@ -130,6 +138,8 @@
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <script src="lib/leaflet.js"></script>
 <script src="lib/qr.js"></script>
+<script src="lib/jsQR.js"></script>
+<script src="scan.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>

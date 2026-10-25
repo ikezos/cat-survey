@@ -2,7 +2,7 @@
 .top{position:sticky;top:0;z-index:1000}
 header{background:#2f6f4f;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;min-height:48px}
 h1{font-size:19px;margin:0}h1 small{font-size:12px;opacity:.8}.badge{background:#e07a2f;border-radius:12px;padding:4px 10px;font-size:14px}.badge:empty{display:none}
-nav{display:flex;background:#fff;border-bottom:1px solid #ccc}nav button{flex:1;min-height:48px;border:0;background:none;padding:0;font-size:16px}nav button.active{border-bottom:3px solid #2f6f4f;font-weight:bold}
+nav{display:flex;background:#fff;border-bottom:1px solid #ccc;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}nav::-webkit-scrollbar{display:none}nav button{flex:1 0 auto;min-height:48px;min-width:44px;border:0;background:none;padding:0 7px;font-size:15px;white-space:nowrap}nav button.active{border-bottom:3px solid #2f6f4f;font-weight:bold}
 main{padding:10px 10px 80px}.tab{display:none}.tab.active{display:block}
 .card{background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:10px;box-shadow:0 1px 2px #0002}
 h3{font-size:16px;margin:4px 0 8px}.hint{font-size:13px;color:#555;margin:-4px 0 8px}
@@ -54,7 +54,7 @@ nav button{font-size:15px;padding:0 2px}
 .fl{display:block;font-size:14px;color:#555;margin:6px 0}.fl input{display:block;width:100%;min-height:48px;font-size:16px;padding:8px;border-radius:8px;border:1px solid #aaa;margin-top:3px}
 .site .row .small{min-height:44px}
 #scopebar{margin:0 0 8px}
-table.stat th{font-size:11px;padding:4px 1px;line-height:1.25;word-break:break-all;overflow-wrap:anywhere}table.stat td{font-size:14px;padding:6px 2px}table.stat td.nm{text-align:left;font-size:13px;word-break:break-all}table.stat{table-layout:fixed}table.stat th:first-child{width:25%}
+.statwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}table.stat{table-layout:fixed;width:auto;min-width:640px;border-collapse:separate;border-spacing:0}table.stat th,table.stat td{font-size:14px;padding:6px 6px;line-height:1.3;width:76px;border-bottom:1px solid #e3ded3}table.stat thead th{white-space:normal;vertical-align:bottom}table.stat .nm{position:sticky;left:0;z-index:1;background:#fff;text-align:left;width:120px;min-width:120px;word-break:break-all;box-shadow:2px 0 0 #e3ded3}table.stat tr.total th,table.stat tr.total td{font-weight:bold;border-top:2px solid #999}.statwhat{font-size:14px;margin:4px 2px 8px}
 .linkbtn{display:flex;align-items:center;justify-content:center;min-height:48px;margin:6px 0;border:1px solid #2f6f4f;border-radius:10px;background:#fff;color:#1d4b34;text-decoration:none;font-size:16px;padding:6px 10px;text-align:center}
 .hidden{display:none !important}
 
@@ -72,3 +72,29 @@ table.stat th{font-size:11px;padding:4px 1px;line-height:1.25;word-break:break-a
 .qr{display:block;margin:6px auto;width:min(270px,80vw);height:auto;image-rendering:pixelated}.pc-note{font-size:13px;color:#333;text-align:left;margin:8px 0 0}
 .urlbox{font-family:ui-monospace,monospace;font-size:13px;word-break:break-all;background:#f4f4f4;border:1px solid #ccc;border-radius:8px;padding:8px;user-select:all}
 @media print{body>*{display:none !important}#sheet{display:block !important;position:static;overflow:visible;background:#fff}#sheet .noprint,#sheet .warn,.toast{display:none !important}.sheetbody{padding:0}.printcard{width:85mm;margin:10mm auto;padding:6mm;border:1px solid #000;border-radius:0;box-shadow:none;page-break-inside:avoid}.qr{width:55mm}.pc-name{font-size:18pt}.pc-title{font-size:11pt}.pc-note{font-size:9pt}}
+
+.block{font-size:1.15em;font-weight:bold}body.locked nav,body.locked .tab:not(#tab-record),body.locked #scopebar,body.locked #delbar,body.locked #tab-record>:not(#logincard){display:none !important}
+
+/* 2026-10-25 2332: 保存の入れ物の案内・えさ場のプルダウン・処理中・削除 */
+.dbmsg{background:#b00020;color:#fff;padding:12px 14px;font-size:18px;font-weight:bold;line-height:1.5}.dbmsg p{margin:0 0 8px}.dbmsg .small{color:#222;font-weight:bold}
+.sitesel{min-height:52px;font-size:18px;padding:10px;border:2px solid #2f6f4f;border-radius:10px;background:#fff;color:#222}
+button.busy,button[aria-busy=true]{opacity:.7;cursor:progress}
+.mark.del{background:#fde8e8;color:#b00;border:1px solid #b00}.item.gone,.card.gone{opacity:.75;background:#f3f3f3}
+.gonebox summary{min-height:48px;display:flex;align-items:center;font-weight:bold;cursor:pointer}
+#delbar{margin-bottom:8px}
+
+/* 20261026-0001: カードの QR を読む・ホーム画面への追加の案内 */
+.scanbtnbox{margin:6px 0}.scanbtnbox.first{margin:0 0 12px;padding-bottom:12px;border-bottom:1px dashed #9bb}
+.bigbtn{width:100%;min-height:64px;font-size:20px;font-weight:bold}
+.scanbox{position:relative;width:100%;aspect-ratio:1/1;background:#000;border-radius:10px;overflow:hidden;margin:8px 0}
+.scanbox video{width:100%;height:100%;object-fit:cover;display:block}
+.scanframe{position:absolute;inset:14%;border:4px solid #7be0a8;border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.25);pointer-events:none}
+#scan-msg{margin:6px 0;padding:8px;border-radius:8px;font-size:15px}
+.homeguide h3.big{font-size:20px;line-height:1.4;margin-top:0;color:#8a3b00}
+.gstep{display:flex;align-items:center;gap:10px;margin:10px 0}.gstep p{margin:0;flex:1;font-size:15px}
+.gn{flex:none;width:26px;height:26px;border-radius:50%;background:#2f6f4f;color:#fff;text-align:center;line-height:26px;font-weight:bold}
+.gi{flex:none;width:44px;height:44px}.gi.wide{width:150px;height:36px}
+.installhint{border:2px solid #2f6f4f}
+/* いなくなった(2026-10-26 0002) */
+.mark.away{background:#eee;color:#555;border:1px solid #888}.item.away{opacity:.6;background:#f1f1f1}.warn.away{background:#f1f1f1;border-color:#888;color:#333}
+.dot.away{background:#bbb;opacity:.6}.gonetoggle{margin:6px 0 10px}.gonereasons{margin:4px 2px 12px}
