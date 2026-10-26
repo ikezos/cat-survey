@@ -7,6 +7,7 @@
 - プライバシーポリシー: https://cats.ikezos.com/privacy.html
 - 「見本のデータ」の20頭は架空のものです(名古屋市内の区域の見本)。
 - 地図は Leaflet 1.9.4(lib/LEAFLET-LICENSE.txt)と OpenStreetMap の地図を使っています。
+- 重なった地図の印を丸の数字にまとめる所は Leaflet.markercluster 1.5.3(MIT、lib/MARKERCLUSTER-LICENSE.txt)を使っています。
 - カードの QR の読み取りは jsQR(Apache-2.0、lib/JSQR-LICENSE.txt)を使い、端末の中だけで行います。
 - 猫は消さずに「いなくなった」と記録できます(いなくなった日と理由)。理由の選択肢は、受け付けのシート「選択肢」の「いなくなった理由」で変えられます。
 - 一覧を開いた時は「すべて」(未送信も送信済みも)が出ます。
