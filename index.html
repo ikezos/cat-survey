@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
+<meta name="app-ver" content="cat-survey-v22">
 <title>のら猫 頭数調査</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -25,6 +26,7 @@
     <button data-tab="admin" id="nav-admin" class="hidden">管理</button>
   </nav>
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
+  <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -145,6 +147,10 @@
 </main>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
+<script>
+// 起動の見張り(20261027-0731): 12秒たっても起動が終わらない(app.js が読めない・途中で止まった)時、起動の画面のまま黙らず、案内と「開き直す」を出す
+setTimeout(function () { if (window.catBooted) return; var m = document.getElementById('bootmsg'); if (!m) return; m.querySelector('.boottext').textContent = 'アプリの起動に時間がかかっています。電波のある所で「開き直す」を押してください(この端末の記録は消えていません)。'; m.classList.remove('hidden'); }, 12000);
+</script>
 <script src="lib/leaflet.js"></script>
 <script src="lib/leaflet.markercluster.js"></script>
 <script src="lib/qr.js"></script>

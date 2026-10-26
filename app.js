@@ -1677,7 +1677,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v21';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v22';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -1739,7 +1739,14 @@ async function autoErrFlush() {
 }
 // 手で送る知らせ: 別の入れ物(catSurveyBugs)に置き、送れたら外す
 let bugDbp = null;
-const bugDb = () => bugDbp || (bugDbp = new Promise((ok, ng) => { const q = indexedDB.open('catSurveyBugs', 1); q.onupgradeneeded = () => q.result.createObjectStore('bugs', { keyPath: 'cid' }); q.onsuccess = () => ok(q.result); q.onerror = () => { bugDbp = null; ng(q.error); }; }));
+// 開けない・止まった(blocked)・時間切れ(8秒)の時は待ち続けず失敗にする(送信や起動を止めない。20261027-0731)。別の画面が版を上げる時は閉じて譲る
+const bugDb = () => bugDbp || (bugDbp = new Promise((ok, ng) => {
+  let done = false; const fail = e => { if (done) return; done = true; clearTimeout(tm); bugDbp = null; ng(e || dbErr('failed')); }, tm = setTimeout(() => fail(dbErr('timeout')), DB_WAIT_MS);
+  let q; try { q = indexedDB.open('catSurveyBugs', 1); } catch (e) { return fail(e); }
+  q.onupgradeneeded = () => { if (!q.result.objectStoreNames.contains('bugs')) q.result.createObjectStore('bugs', { keyPath: 'cid' }); };
+  q.onsuccess = () => { const db = q.result; db.onversionchange = () => { db.close(); bugDbp = null; }; if (done) { db.close(); return; } done = true; clearTimeout(tm); ok(db); };
+  q.onerror = () => fail(q.error); q.onblocked = () => fail(dbErr('blocked'));
+}));
 const bugTx = (mode, fn) => bugDb().then(db => new Promise((ok, ng) => { const t = db.transaction('bugs', mode), r = fn(t.objectStore('bugs')); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(t.error); }));
 const bugAll = () => bugTx('readonly', s => s.getAll()).catch(() => []);
 async function renderBugPend() { const el = $('#bugpend'); if (!el) return; const n = (await bugAll()).filter(b => !auth || b.owner === (auth.recorderId || '')).length; el.textContent = n ? `まだ送れていない知らせが ${n} 件あります(電波が戻ったら送ります)` : ''; }
@@ -1875,8 +1882,36 @@ function showTab(t) {
   }
 }
 
+// ---- 起動(20261027-0731)----
+// 起動を段に分け、どの段が失敗しても残りの段は続ける(前は1か所の誤りで、その後の送信・未送信の数・選択肢の取り直し・サービスワーカーの登録が止まった)。
+// 失敗した段があれば、上に案内と「開き直す」を出し、自動の誤りに控える。最後まで来たら catBooted の印(index.html の見張りが12秒で案内を出す)。
+function showBootMsg(text) {
+  const m = document.getElementById('bootmsg'); if (!m) return;
+  m.querySelector('.boottext').textContent = text || '起動の途中で、一部がうまく動きませんでした。おかしな所があれば「開き直す」を押してください(この端末の記録は消えていません)。';
+  m.classList.remove('hidden');
+}
+function bootFail(name, e) { logErr('起動の誤り: ' + name + ' ' + (e && (e.message || e.name) || String(e))); showBootMsg(); }
+function bootStep(name, fn) { try { const r = fn(); return r && typeof r.catch === 'function' ? r.catch(e => bootFail(name, e)) : r; } catch (e) { bootFail(name, e); } }
+// 公開の直後は、ブラウザの控え(最大10分)で index.html と app.js の版が食い違うことがある。食い違ったら1回だけ読み込み直す(続けては直さない)
+function bootVersionOk() {
+  const meta = document.querySelector('meta[name="app-ver"]'), v = meta ? meta.content : '';
+  if (v === APP_VER) return true;
+  const last = Number(sessionStorage.getItem('catSurvey.verReload') || 0);
+  if (Date.now() - last > 60000) { sessionStorage.setItem('catSurvey.verReload', String(Date.now())); logErr('版の食い違い: ' + (v || '無し') + ' / ' + APP_VER); location.reload(); return false; }
+  showBootMsg('アプリの新しい版の読み込みが揃っていません。少し待ってから「開き直す」を押してください(この端末の記録は消えていません)。');
+  return true;   // 読み込み直した後もまだ食い違う時は、案内を出して、そのまま先へ進む
+}
 document.addEventListener('DOMContentLoaded', async () => {
-  buildForm(); getGps(); renderAuth(); loadGsi();
+  if (!bootStep('版の確かめ', bootVersionOk)) return;
+  bootStep('サービスワーカー', () => {   // 先に登録する(後の段が失敗しても、新しい版に入れ替われるように)
+    if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
+    // サービスワーカーが新しい版に替わったら、古い画面(古い app.js)を1回だけ読み込み直す(入力の途中なら、保存して空になってから)。初めて入った時(前の控えが無い)は読み込み直さない
+    const hadCtl = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl) return; wantReload = true; maybeReload(); });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+  bootStep('入力の欄', buildForm); bootStep('位置', getGps); bootStep('ログインの表示', renderAuth); bootStep('ログインの部品', loadGsi);
+  bootStep('ボタン', () => {
   let wasOn = loggedIn();   // 通行証・ID トークンの期限が切れた時に、画面を閉じる(開いたままでも、期限が切れたら使えない)
   setInterval(() => { const on = loggedIn(); if (on === wasOn) return; wasOn = on; renderAuth(); if (!on && auth && !isCard() && navigator.onLine) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } }, 20000);
   readCardFromUrl();   // カードの URL(#card=…)で開かれたら、合言葉を URL から消して、暗証番号を聞く
@@ -1918,22 +1953,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-send').onclick = e => busy(e.currentTarget, () => sendPending(false), '送っています…');
   $('#btn-refresh').onclick = e => busy(e.currentTarget, () => refreshFromServer(false).catch(err => toast(dbErrText(err), 6000)), '取り直しています…');
   $('#btn-logout').onclick = logout;
+  });
+  bootStep('不具合の知らせ', () => {
   $('#btn-bug').onclick = () => openBugForm();
   $('#btn-bugmine').onclick = e => busy(e.currentTarget, openBugMine, '読み込んでいます…');
   $('#autoerr').checked = autoErrOn(); $('#autoerr').onchange = e => { saveCfg({ autoErr: e.target.checked }); toast(e.target.checked ? 'アプリの誤りを自動で知らせます' : 'アプリの誤りを自動で知らせるのを止めました'); };
+  });
+  bootStep('そのほかのボタン', () => {
   if (CONF.SHOW_DEMO || new URLSearchParams(location.search).has('demo')) $('#btn-demo').classList.remove('hidden');
   $('#btn-demo').onclick = demo;
   $('#btn-clear').onclick = async () => { if (confirm('この端末の記録を、すべて消します。よろしいですか?')) { await clearAll(); await updateBadge(); renderList(); toast('消しました'); } };
   window.addEventListener('online', () => { toast('電波が戻りました。未送信を送ります'); syncQuiet(); refreshMeta(); });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !autoP && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
+  });
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
-  updateBadge();
-  refreshMeta();   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
-  syncQuiet(); // 開いた時に、未送信があって電波があれば送る
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    // サービスワーカーが新しい版に替わったら、古い画面(古い app.js)を1回だけ読み込み直す(入力の途中なら、保存して空になってから)。初めて入った時(前の控えが無い)は読み込み直さない
-    const hadCtl = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl) return; wantReload = true; maybeReload(); });
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  bootStep('未送信の数', updateBadge);
+  bootStep('選択肢と役割', refreshMeta);   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
+  bootStep('送信', syncQuiet); // 開いた時に、未送信があって電波があれば送る
+  window.catBooted = true;
 });
