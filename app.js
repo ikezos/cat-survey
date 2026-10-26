@@ -210,8 +210,8 @@ window.onGoogleCredential = async resp => {
   if (auth !== mine) return;   // 使えない人と分かって、もう取り消された(または別のログインに替わった)
   delete mine.pending;
   if (r.ok) { auth.recorderId = r.recorderId; auth.verified = true; applyMeta(r); saveAuth(); renderAuth(); toast('ログインしました'); await syncQuiet(); }
-  else if ((r.error === 'network' || r.error === 'timeout') && mine.verified) { saveAuth(); renderAuth(); toast('受け付けにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
-  else { auth = null; saveAuth(); const off = r.error === 'network' || r.error === 'timeout'; blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
+  else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('受け付けにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
+  else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
 function denyAccess(err) {
   auth = null; saveAuth(); blocked = err; setScope('mine', true); closeSheet();
@@ -339,11 +339,33 @@ try { applyOptions(JSON.parse(localStorage.getItem(OPT_KEY) || 'null')); } catch
 // ---- 受け付け(Apps Script)との通信 ----
 // Content-Type を text/plain にして、CORS のプリフライトを避ける。受け付けは 302 で別の URL へ飛ばすので redirect は follow。
 // 受け付けの返事にも上限を付ける(返事が来ないまま待ち続けない)。写真つきの送信は長め。時間切れでも受け付けで済んでいることがあるので、送り直しは同じ ID で送る(受け付けが二重にしない)
-const API_WAIT_MS = 30000, API_WAIT_PHOTO_MS = 90000;
-async function post(body, ms = API_WAIT_MS) {
+const API_WAIT_MS = Number(CONF.API_WAIT_MS) > 0 ? Number(CONF.API_WAIT_MS) : 30000, API_WAIT_PHOTO_MS = Math.max(API_WAIT_MS, Number(CONF.API_WAIT_MS) > 0 ? Number(CONF.API_WAIT_MS) : 90000);   // CONF.API_WAIT_MS は試しの時だけ(公開の設定には入れない)
+// 送れなかった訳を2つに分ける(2026-10-26 0821。艦長 msg 6673):
+//  電波(NET_ERR): 端末が圏外・応答がまったく無い(つながらない・返事の始まりが来ないまま時間切れ)→「電波が弱いようです。つながったら自動で送ります。」
+//  受け付け(SRV_ERR): 受け付けまでは届いたが、まともな返事でない(HTML の頁・500 など・server_error・返事の途中で止まった)→「受け付けが応えません。艦長に知らせてください。」
+//  どちらも記録は端末に残る(送れた扱いにしない)。ブラウザは CORS の見出しの無い誤りの頁も「応答なし」(TypeError)に見せるので、その時は受け付けに軽く問い合わせて(no-cors の GET)、届くなら受け付けの側とみなす
+const NET_ERR = ['network', 'timeout'], SRV_ERR = ['bad_response', 'http_error', 'server_error', 'stalled', 'no_cors'];
+const noAnswer = e => NET_ERR.includes(e) || SRV_ERR.includes(e);
+async function reachable(ms = 6000) {
   const ac = typeof AbortController === 'function' ? new AbortController() : null, timer = ac && setTimeout(() => ac.abort(), ms);
-  try { const res = await fetch(CONF.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', body: JSON.stringify(body), ...(ac ? { signal: ac.signal } : {}) }); return (await res.json()) || { ok: false, error: 'bad_response' }; }
-  catch (e) { return { ok: false, error: e && e.name === 'AbortError' ? 'timeout' : 'network' }; }
+  try { await fetch(CONF.GAS_URL, { method: 'GET', mode: 'no-cors', cache: 'no-store', ...(ac ? { signal: ac.signal } : {}) }); return true; } catch { return false; } finally { if (timer) clearTimeout(timer); }
+}
+async function post(body, ms = API_WAIT_MS) {
+  if (navigator.onLine === false) return { ok: false, error: 'network', offline: true };
+  const ac = typeof AbortController === 'function' ? new AbortController() : null, timer = ac && setTimeout(() => ac.abort(), ms);
+  let res = null;
+  try {
+    res = await fetch(CONF.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow', body: JSON.stringify(body), ...(ac ? { signal: ac.signal } : {}) });
+    const text = await res.text();
+    if (!res.ok) return { ok: false, error: 'http_error', status: res.status };
+    let j; try { j = JSON.parse(text); } catch { return { ok: false, error: 'bad_response' }; }   // Google の誤りの頁(HTML)など
+    return j && typeof j === 'object' ? j : { ok: false, error: 'bad_response' };
+  } catch (e) {
+    if (res) return { ok: false, error: 'stalled' };   // 返事の始まりは来たが、途中で止まった・切れた
+    if (e && e.name === 'AbortError') return { ok: false, error: 'timeout' };
+    if (timer) clearTimeout(timer);
+    return { ok: false, error: navigator.onLine !== false && await reachable() ? 'no_cors' : 'network' };
+  }
   finally { if (timer) clearTimeout(timer); }
 }
 // ログインの前の呼び出し(cardLogin)。ログインの印は付けない
@@ -361,24 +383,27 @@ async function api(action, extra = {}, ms) {
   const cred = isCard() || !idValid() ? { pass: auth.pass } : { idToken: auth.idToken, ...(action === 'whoami' && !(auth.pass && auth.passExp > Date.now() + 7 * 864e5) ? { wantPass: true } : {}) };
   const viaPass = !!cred.pass;
   const r = await post({ action, ...cred, ...extra }, ms);
-  if (r.error === 'network' || r.error === 'timeout') return r;
+  if (noAnswer(r.error)) return r;
   if (r && r.ok && r.pass && !isCard() && auth) { auth.pass = r.pass; auth.passExp = Number(r.passExp) || 0; saveAuth(); }
   if (r && !isCard() && viaPass && r.error === 'pass_invalid') { auth.pass = ''; auth.passExp = 0; saveAuth(); renderAuth(); return r; }   // Google の人の通行証が使えない(期限切れ・登録から外された)→ 通行証を捨て、Google でログインし直してもらう
   if (r && !isCard() && ['token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token'].includes(r.error)) { auth.idToken = ''; delete auth.pending; saveAuth(); renderAuth(); }
   if (r && DENY.includes(r.error) && auth) denyAccess(r.error);   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
   return r || { ok: false, error: 'bad_response' };
 }
+// 送れない時の案内(0821)。送る時(sendNow)は WEAK_TEXT・SRV_TEXT + 端末に残っている旨。押してすぐ結果が要る操作(管理・元に戻す等)は WEAK_TEXT_TRY
+const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = '受け付けが応えません。艦長に知らせてください。';
+const sendErrText = e => NET_ERR.includes(e) ? WEAK_TEXT + '(記録はこの端末に残っています)' : SRV_ERR.includes(e) ? SRV_TEXT + '(記録はこの端末に残っています)' : errText(e);
 const ERR_TEXT = {
   not_configured: '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。', not_logged_in: 'Google でログインするか、ログインカードをかざして(QR を読んで)ください。',
   stopped: 'このアカウントは止められています。研究会の担当者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
   card_stopped: 'このカードは止まっています。研究会の担当者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。研究会の担当者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
-  bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '呼び名は1〜20字で入れてください。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
-  network: '電波がないか、受け付けにつながりません。あとでもう一度送ってください。', not_registered: 'この Google アカウントは、まだ登録されていません。研究会の担当者に登録を頼んでください。',
+  bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '呼び名は1〜20字で入れてください。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
+  network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。研究会の担当者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
   server_not_configured: '受け付け側の設定がまだです(担当者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
   busy: '受け付けが混んでいます。少し待ってもう一度送ってください。',
-  timeout: '受け付けの返事がありませんでした(時間切れ)。電波のよい所で、もう一度送ってください。端末の記録は残っています。',
+  timeout: WEAK_TEXT_TRY,
   already_done: 'この操作は、もう受け付けで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
   deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。担当者に相談してください)。',
   id_needed: '全員の記録・管理は、Google でもう一度ログインしてから使えます(ログインの期限が切れました)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(担当者へ連絡してください)。この端末に貯めた分は残っています。',
@@ -388,7 +413,7 @@ const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.o
 
 let sending = false, sendAgain = false, sendingP = null;   // sendAgain: 送っている最中に保存された物がある(終わったら続けて送る)。sendingP: 今の送りが終わるのを待つため
 // 電波・ログイン・受け付けの都合で送れなかっただけの誤り。この時は端末に貯めた直し・変化を残して、あとでもう一度送る
-const TRANSIENT = ['network', 'timeout', 'busy', 'not_logged_in', 'not_configured', 'token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token', 'tokeninfo_unreachable', 'server_error', 'server_not_configured', 'bad_json', 'bad_response', 'unknown_action', 'not_registered', 'email_not_verified', 'stopped', 'pass_invalid', 'card_stopped'];
+const TRANSIENT = ['network', 'timeout', 'http_error', 'stalled', 'no_cors', 'busy', 'not_logged_in', 'not_configured', 'token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token', 'tokeninfo_unreachable', 'server_error', 'server_not_configured', 'bad_json', 'bad_response', 'unknown_action', 'not_registered', 'email_not_verified', 'stopped', 'pass_invalid', 'card_stopped'];
 // 端末に貯めた「直し」「状態の変化」を、記録ごとに古い順に送る。送れた分は貯めた列から外す(外す前に記録を読み直す=送っている間に足された分を消さない)
 async function sendOps() {
   let sent = 0, lastErr = null, dropped = [];
@@ -452,7 +477,7 @@ async function sendNow(quiet) {
     if (!pend.length && !all.some(r => opsOf(r).length) && !sites.some(x => (x.status === 'pending' && !x.deleted) || (x.ops || []).length)) return say('未送信の記録はありません');
     if (!configured()) return say(errText('not_configured'), 5000);
     if (!loggedIn()) return say(errText('not_logged_in'), 5000);
-    if (!navigator.onLine) return say('電波がありません。電波が戻ったら自動で送ります。', 5000);
+    if (!navigator.onLine) return say(WEAK_TEXT + '(記録はこの端末に残っています)', 5000);
     let sent = 0, lastErr = null, dropped = [];
     const so = await sendSites(); sent += so.sent; lastErr = so.lastErr;
     if (!lastErr) for (const r of pend) {
@@ -464,8 +489,10 @@ async function sendNow(quiet) {
       // 送っている間に直された・削除された物は、端末の今の形を読み直し、違う所を直し・削除として続けて送る(前は送る前の形で上書きして、直しが消えた)
       const f = (await getRecord(r.id)) || r, now = new Date().toISOString(), diff = {};
       if (res.siteDropped && f.siteId === record.siteId) f.siteId = '';
-      [...EDIT_FIELD_KEYS, 'feature', 'siteId'].forEach(k => { if (k === 'siteId' && res.siteDropped) return; if ((f[k] ?? '') !== (record[k] ?? '')) diff[k] = f[k] ?? ''; });
-      if (JSON.stringify(f.petReasons || []) !== JSON.stringify(record.petReasons || []) || (f.petOther || '') !== (record.petOther || '')) { diff.petReasons = f.petReasons || []; diff.petOther = f.petOther || ''; }
+      // 受け付けに前の送りがもうあった(duplicate=返事が電波で切れた送りの、送り直し)時は、受け付けの中身が分からないので、直せる所を全部「直し」で送る(同じ所は受け付けが数えない。0821)
+      const base = res.duplicate ? {} : record;
+      [...EDIT_FIELD_KEYS, 'feature', 'siteId'].forEach(k => { if (k === 'siteId' && res.siteDropped) return; if ((f[k] ?? '') !== (base[k] ?? '')) diff[k] = f[k] ?? ''; });
+      if (JSON.stringify(f.petReasons || []) !== JSON.stringify(base.petReasons || []) || (f.petOther || '') !== (base.petOther || '')) { diff.petReasons = f.petReasons || []; diff.petOther = f.petOther || ''; }
       f.status = 'sent'; f.recorderId = res.recorderId; f.sentAt = now;
       if (Object.keys(diff).length) f.ops = [...opsOf(f), { type: 'edit', opId: newId('o'), queuedAt: now, fields: diff }];
       if (f.deleted) f.ops = [...opsOf(f), { type: 'delete', opId: newId('o'), queuedAt: now }];
@@ -473,7 +500,8 @@ async function sendNow(quiet) {
     }
     if (!lastErr) { const o = await sendOps(); sent += o.sent; lastErr = o.lastErr; dropped = o.dropped; }
     await updateBadge();
-    if (lastErr) say(`${sent}件を送りました。` + errText(lastErr), 6000);
+    lastSendErr = lastErr;
+    if (lastErr) { say((sent ? `${sent}件を送りました。` : '') + sendErrText(lastErr), 7000); if (noAnswer(lastErr)) retryLater(); }
     else {
       const dmsg = dropped.length ? `${sent}件を送りました。受け付けが受け付けなかった直し・変化が${dropped.length}件あります(${errText(dropped[0])})` : '';
       say(dmsg || `${sent}件を送りました(送信済み)`, dropped.length ? 7000 : 3500);
@@ -482,39 +510,73 @@ async function sendNow(quiet) {
     }
     renderActiveTab();
   } catch (e) { if (!DB_TEXT[e && e.code]) throw e; say(dbErrText(e), 7000); }
-  finally { sending = false; if (sendAgain) { sendAgain = false; setTimeout(() => { if (!sending) sendPending(true); }, 0); } }
+  finally { sending = false; if (sendAgain) { sendAgain = false; if (noAnswer(lastSendErr)) retryLater(); else setTimeout(() => { if (!sending) sendPending(true); }, 0); } }   // 電波・受け付けの都合で止まった直後は、すぐ送り直さない(自動の送り直しに任せる。すぐ送り直すと、時間切れのたびに続けて送り続けた)
 }
 
+// 受け付けの記録と端末の控えを合わせる(2026-10-26 0821)。読みと書きを1つの取引で行う(合わせている間に押された削除・直しを、古い形で上書きしない)。
+//  ・未送信の直し・変化・削除がある記録は上書きしない(送ってから合わせる)
+//  ・端末では未送信なのに受け付けにある記録(送った返事が電波で切れた物): 送れた扱いにし、端末で後から直した所・削除を「直し」「削除」として貯める。
+//    前はここで受け付けの形に上書きしたので、返事が切れた後に削除した猫が、取り直しで復活した(艦長 msg 6681・6683)
+//  ・受け付けに無くなった自分の送信済みの記録(管理者が試しの記録をすべて消した等)は、端末からも外す。未送信の物は残す
+// 戻り値: 送る物を貯めたか
+function mergeServerRecords(list, myId) {
+  let queued = false;
+  return run('readwrite', st => {
+    const q = st.getAll();
+    q.onsuccess = () => {
+      const local = new Map(q.result.map(r => [r.id, r])), seen = new Set(), now = new Date().toISOString();
+      for (const s of list) {
+        seen.add(s.id);
+        const l = local.get(s.id);
+        if (!l) { st.put({ ...s, photos: [], remote: true, status: 'sent' }); continue; }   // 別の端末や消した後の記録。写真はこの端末に無い
+        let dirty = false;
+        if (l.status !== 'sent') {
+          const diff = {};
+          [...EDIT_FIELD_KEYS, 'feature', 'siteId'].forEach(k => { if ((l[k] ?? '') !== (s[k] ?? '')) diff[k] = l[k] ?? ''; });
+          if (JSON.stringify(l.petReasons || []) !== JSON.stringify(s.petReasons || []) || (l.petOther || '') !== (s.petOther || '')) { diff.petReasons = l.petReasons || []; diff.petOther = l.petOther || ''; }
+          l.status = 'sent'; l.sentAt = l.sentAt || now; ['mesh3', 'mesh500', 'mesh250'].forEach(k => { if (s[k]) l[k] = s[k]; });
+          if (!l.deleted && Object.keys(diff).length) { l.ops = [...opsOf(l), { type: 'edit', opId: newId('o'), queuedAt: now, fields: diff }]; queued = true; }
+          if (l.deleted && !s.deleted) { l.ops = [...opsOf(l), { type: 'delete', opId: newId('o'), queuedAt: now }]; queued = true; }
+          dirty = true;
+        }
+        if (l.recorderId !== s.recorderId) { l.recorderId = s.recorderId; dirty = true; }
+        if (!opsOf(l).length) {   // 送っていない直し・変化・削除が無い記録は、受け付けの今の内容に合わせる(別の端末で直した分も入る)
+          for (const k of SERVER_KEYS) if (JSON.stringify(l[k]) !== JSON.stringify(s[k])) { l[k] = s[k]; dirty = true; }
+        }
+        if (dirty) st.put(l);
+      }
+      for (const l of q.result) if (!seen.has(l.id) && l.status === 'sent' && !opsOf(l).length && myId && l.recorderId === myId) st.delete(l.id);
+    };
+  }).then(() => queued);
+}
 // 自分の記録を受け付けから取り直し、端末の控えと合わせる(他人の記録は受け付けが返さない)
 async function refreshFromServer(quiet = false) {
   const say = (m, ms) => { if (!quiet) toast(m, ms); $('#sendmsg').textContent = m; };
   if (!configured()) return say(errText('not_configured'), 5000);
   if (!loggedIn()) return say(errText('not_logged_in'), 5000);
   const res = await api('list');
-  if (!res.ok) return say(errText(res.error), 5000);
+  if (!res.ok) return say(noAnswer(res.error) ? (NET_ERR.includes(res.error) ? WEAK_TEXT_TRY : SRV_TEXT) : errText(res.error), 5000);
   lastRefreshAt = Date.now();
   applyMeta(res);
-  const lsites = new Map((await allSites()).map(x => [x.id, x])), putS = [];
+  const lsites = new Map((await allSites()).map(x => [x.id, x])), putS = [], seenS = new Set(); let queuedS = false;
   for (const s of res.sites || []) {   // えさ場: 送信待ちの直しが無い物は、受け付けの内容に合わせる。端末に無い物(別の端末で登録)は足す
-    const l = lsites.get(s.id);
+    const l = lsites.get(s.id); seenS.add(s.id);
     if (!l) putS.push({ ...s, status: 'sent', ops: [] });
-    else if (!(l.ops || []).length) { let d = l.status !== 'sent'; for (const k of ['name', 'memo', 'retired', 'mesh3', 'mesh500', 'mesh250', 'recorderId', 'deleted', 'deletedAt']) if (l[k] !== s[k]) { l[k] = s[k]; d = true; } if (d) { l.status = 'sent'; putS.push(l); } }
+    else if (l.status !== 'sent') {   // 登録の返事が電波で切れた物(受け付けにはある): 送れた扱いにし、端末で後から直した所・削除を貯める(記録と同じ。0821)
+      const fx = {}, now = new Date().toISOString(); if (l.name !== s.name) fx.name = l.name; if ((l.memo || '') !== (s.memo || '')) fx.memo = l.memo || ''; if (!!l.retired !== !!s.retired) fx.retired = !!l.retired;
+      l.status = 'sent'; l.recorderId = s.recorderId; ['mesh3', 'mesh500', 'mesh250'].forEach(k => { if (s[k]) l[k] = s[k]; });
+      if (!l.deleted && Object.keys(fx).length) { l.ops = [...(l.ops || []), { opId: newId('o'), type: 'siteEdit', fields: fx, queuedAt: now }]; queuedS = true; }
+      if (l.deleted && !s.deleted) { l.ops = [...(l.ops || []), { opId: newId('o'), type: 'siteDelete', queuedAt: now }]; queuedS = true; }
+      putS.push(l);
+    }
+    else if (!(l.ops || []).length) { let d = false; for (const k of ['name', 'memo', 'retired', 'mesh3', 'mesh500', 'mesh250', 'recorderId', 'deleted', 'deletedAt']) if (l[k] !== s[k]) { l[k] = s[k]; d = true; } if (d) putS.push(l); }
   }
   if (putS.length) await putSites(putS);
-  const local = new Map((await allRecords()).map(r => [r.id, r])), put = [];
-  for (const s of res.records || []) {
-    const l = local.get(s.id);
-    if (l) {
-      let dirty = false;
-      if (l.status !== 'sent' || l.recorderId !== s.recorderId) { l.status = 'sent'; l.recorderId = s.recorderId; dirty = true; }
-      if (!opsOf(l).length) {   // 送っていない直し・変化が無い記録は、受け付けの今の内容に合わせる(別の端末で直した分も入る)
-        for (const k of SERVER_KEYS) if (JSON.stringify(l[k]) !== JSON.stringify(s[k])) { l[k] = s[k]; dirty = true; }
-      }
-      if (dirty) put.push(l);
-    }
-    else put.push({ ...s, photos: [], remote: true, status: 'sent' }); // 別の端末や消した後の記録。写真はこの端末に無い
-  }
-  if (put.length) await putAll(put);
+  const goneS = [...lsites.values()].filter(x => !seenS.has(x.id) && x.status === 'sent' && !(x.ops || []).length && res.recorderId && x.recorderId === res.recorderId).map(x => x.id);   // 受け付けに無くなった自分のえさ場(試しの記録をすべて消した等)
+  if (goneS.length) await run('readwrite', s => { goneS.forEach(id => s.delete(id)); }, SITES);
+  if (queuedS) sendPending(true);
+  const queued = await mergeServerRecords(res.records || [], res.recorderId);
+  if (queued) sendPending(true);   // 端末に残っていた削除・直しを、続けて送る(送っている最中なら、終わった後に)
   if (auth && auth.recorderId !== res.recorderId) { auth.recorderId = res.recorderId; saveAuth(); renderAuth(); }
   await updateBadge();
   say(`自分の記録 ${res.records.filter(r => !r.deleted).length}件を受け付けから取り直しました`);
@@ -525,15 +587,21 @@ async function refreshFromServer(quiet = false) {
 // 電波があってログイン中なら、未送信を送り、記録を取り直す(案内は画面下に出さない)
 // 自動の取り直し(2026-10-26): ログインの直後・開いた時・電波が戻った時・送り終えた後・画面に戻った時(前から5分以上)。未送信の記録は消さない(送ってから合わせる)
 const AUTO_REFRESH_MS = 5 * 60000;
-let lastRefreshAt = 0, autoP = null;
+let lastRefreshAt = 0, autoP = null, syncAgain = false, retryTimer = null, lastSendErr = null;   // lastSendErr: 前の送りが電波・受け付けの都合で止まった訳(その時は続けて取り直さない=送れない案内を上書きしない)
+// 電波・受け付けの都合で送れなかった時は、1分ごとに自動で送り直す(電波が弱い所では「電波が戻った」の合図が来ないため。0821)。送る物が無くなれば止まる
+const RETRY_MS = Number(CONF.RETRY_MS) > 0 ? Number(CONF.RETRY_MS) : 60000;
+function retryLater() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(async () => { retryTimer = null; if (sending || autoP) return retryLater(); await syncQuiet(); }, RETRY_MS);   // 送っている最中なら、重ねずに次の回へ
+}
 function syncQuiet() {
   if (!configured() || !loggedIn() || !navigator.onLine) return Promise.resolve();
-  if (autoP) return autoP;   // 取り直しの最中に重ねて呼ばれても1回だけ
+  if (autoP) { syncAgain = true; return autoP; }   // 取り直しの最中に呼ばれたら(削除を押した等)、終わってからもう1回だけ(前は呼ばれた分を送らずに終えた)
   const ind = $('#refreshing'); if (ind) ind.classList.remove('hidden');
   return (autoP = (async () => {
-    try { const t0 = Date.now(); await sendPending(true); if (lastRefreshAt < t0 && loggedIn() && navigator.onLine) await refreshFromServer(true); }
+    try { const t0 = Date.now(); lastSendErr = null; await sendPending(true); if (lastRefreshAt < t0 && loggedIn() && navigator.onLine && !noAnswer(lastSendErr)) await refreshFromServer(true); }
     catch (e) { /* 自動の時は黙る(手で押した時に案内が出る) */ }
-    finally { autoP = null; if (ind) ind.classList.add('hidden'); }
+    finally { autoP = null; if (ind) ind.classList.add('hidden'); if (syncAgain) { syncAgain = false; setTimeout(() => syncQuiet(), 0); } }
   })());
 }
 
@@ -1165,8 +1233,53 @@ async function renderAdmin() {
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
     <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}
-    <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>`;
+    <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
+    <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選び肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
+      <button type="button" id="ad-wipe" class="wide danger">試しの記録をすべて消す…</button></div>`;
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
+}
+// ---- 試しの記録をすべて消す(2026-10-26 0821。管理者だけ)。2回確かめる(2回目は「消す」と打つ)。押した端末の記録も消す(未送信の物は既定で捨てる・残すも選べる)。ほかの端末は次の取り直しで消えた形になる ----
+async function openWipe() {
+  if (!(loggedIn() && auth.admin && !isCard())) return;
+  let pend = 0; try { pend = (await allRecords()).filter(r => r.status === 'pending' && !r.deleted).length + (await allSites()).filter(x => x.status === 'pending' && !x.deleted).length; } catch { /* 数えられない時は 0 */ }
+  showSheet(`<div class="sheethead"><b>試しの記録をすべて消す(1/2)</b></div><div class="sheetbody"><div class="card">
+    <p><b>全員の</b>猫の記録・状態の変化・えさ場を消し、写真をドライブのごみ箱へ入れます。</p>
+    <p class="note">消えるもの: シートの「記録」「変化」「えさ場」の2行目から下(見出しの行は残ります)・写真のフォルダの中の写真(フォルダは残ります)。<br>残るもの: 「入力者」(登録とカード)・「設定」・「選び肢」・「通行証」(ログインはそのまま)・「管理の記録」。</p>
+    ${pend ? `<p class="warn">この端末に、未送信の記録が ${pend} 件あります(まだ受け付けへ届いていません)。次の画面で、捨てるか残すかを選べます。</p>` : ''}
+    <p class="warn">元には戻せません。本番の記録が入っていないことを確かめてから進んでください。</p>
+    <button type="button" id="wipe-go" class="wide danger">わかった。次へ</button><button type="button" id="wipe-cancel" class="wide">やめる</button></div></div>`);
+  $('#wipe-cancel').onclick = () => closeSheet();
+  $('#wipe-go').onclick = () => {
+    showSheet(`<div class="sheethead"><b>試しの記録をすべて消す(2/2)</b></div><div class="sheetbody"><div class="card">
+      <p>本当に消すなら、下の欄に <b>消す</b> と打ってから押してください。</p>
+      <input id="wipe-word" type="text" autocomplete="off" aria-label="確かめの文字" placeholder="消す">
+      ${pend ? `<label class="fl"><input id="wipe-discard" type="checkbox" checked> この端末の未送信の記録 ${pend} 件も、送らずに捨てる(印を外すと、端末に残して、あとで送ります)</label>` : ''}
+      <p id="wipemsg" class="warn hidden"></p>
+      <button type="button" id="wipe-final" class="wide danger">すべて消す</button><button type="button" id="wipe-cancel2" class="wide">やめる</button></div></div>`);
+    const msg = t => { const el = $('#wipemsg'); el.textContent = t; el.classList.toggle('hidden', !t); };
+    $('#wipe-cancel2').onclick = () => closeSheet();
+    $('#wipe-final').onclick = e => busy(e.currentTarget, async () => {
+      if ($('#wipe-word').value.trim() !== '消す') return msg('「消す」と打ってください(違う文字では消しません)');
+      const discard = !$('#wipe-discard') || $('#wipe-discard').checked;
+      msg(''); sheetBusy = true;
+      try {
+        const r = await adminApi('adminWipeTest', { confirm: '消す' });
+        if (!r.ok) return msg(r.error === 'already_done' ? 'もう消してあります(前に押した時の返事が届かなかったようです)。' : errText(r.error));
+        await wipeLocal(discard);
+        closeSheet(); scope = 'mine'; allView = null; renderScopeBar(); await updateBadge(); renderAdmin();
+        toast(`消しました: 記録 ${r.records}件・変化 ${r.changes}件・えさ場 ${r.sites}件・写真 ${r.photos}枚(ごみ箱へ)。ほかの端末は、次に取り直した時に消えます`, 9000);
+      } finally { sheetBusy = false; }
+    }, '消しています…');
+  };
+}
+// 押した端末の控えを消す。discard=false なら、未送信の記録・えさ場は残す(あとで送る)
+async function wipeLocal(discard) {
+  if (discard) return clearAll();
+  await run('readwrite', s => { const q = s.getAll(); q.onsuccess = () => q.result.forEach(r => { if (r.status === 'sent') s.delete(r.id); else if (opsOf(r).length) { r.ops = []; s.put(r); } }); });
+  await run('readwrite', s => { const q = s.getAll(); q.onsuccess = () => q.result.forEach(x => { if (x.status === 'sent') s.delete(x.id); }); }, SITES);
+  // 残した記録が、消したえさ場に結び付いていれば外す
+  const ids = new Set((await allSites()).map(x => x.id));
+  await run('readwrite', s => { const q = s.getAll(); q.onsuccess = () => q.result.forEach(r => { if (r.siteId && !ids.has(r.siteId)) { r.siteId = ''; s.put(r); } }); });
 }
 // 管理の操作の ID(reqId): 押した時に1つ作る。返事が来なかった(電波・時間切れ)のあとに同じ内容で押し直したら、同じ ID で送る(受け付けは2回目を行わない)
 let lastReq = null;
@@ -1174,7 +1287,7 @@ async function adminApi(action, extra) {
   const key = action + JSON.stringify(extra);
   if (!lastReq || lastReq.key !== key) lastReq = { key, id: newId('q') };
   const r = await api(action, { ...extra, reqId: lastReq.id });
-  if (!(r.error === 'network' || r.error === 'timeout')) lastReq = null;
+  if (!noAnswer(r.error)) lastReq = null;
   return r;
 }
 // 管理の画面の押し物(登録・カードを作る・一覧の操作)。押したボタンは、終わるまで押せない
@@ -1184,6 +1297,7 @@ function onAdminClick(e) {
   return busy(b, () => adminClick(b, e));
 }
 async function adminClick(b, e) {
+  if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-add') {
     const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
     const r = await adminApi('adminAddGoogle', { email, role }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
@@ -1331,7 +1445,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-demo').onclick = demo;
   $('#btn-clear').onclick = async () => { if (confirm('この端末の記録を、すべて消します。よろしいですか?')) { await clearAll(); await updateBadge(); renderList(); toast('消しました'); } };
   window.addEventListener('online', () => { toast('電波が戻りました。未送信を送ります'); syncQuiet(); refreshMeta(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !autoP && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
   updateBadge();
   refreshMeta();   // 開いた時に、選び肢と役割を取り直す(次に開いた時から新しい選び肢が出る)
