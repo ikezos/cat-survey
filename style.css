@@ -140,3 +140,8 @@ label.fl:has(#wipe-discard){display:flex;gap:10px;align-items:flex-start}
 .clu-site .siteicon{width:12px;height:12px;border-width:2px;margin:2px}.clu-site em{font-style:normal;font-size:12px;color:#5a3a00;font-weight:bold}
 .clu.onlysite .clu-site{position:static;box-shadow:none;background:none}.clu.onlysite .clu-site .siteicon{width:16px;height:16px}
 .legclu{display:inline-flex;width:22px;height:22px;margin:0 3px 0 8px;vertical-align:middle;border-width:2px}.legclu b{font-size:12px}
+/* 不具合の知らせ(2026-10-27 0607) */
+.chkline{display:flex;align-items:center;gap:10px;min-height:48px;font-size:16px;margin:6px 0}.chkline input{width:24px;height:24px;flex:none}
+.bugitem{cursor:pointer}.bugtext{font-size:14px;color:#333;margin-top:4px;word-break:break-all}.pre{white-space:pre-wrap;word-break:break-all}
+#bugfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}#bugfilter .on{background:#2f6f4f;color:#fff;border-color:#2f6f4f}
+#bug-thumbs img,#bug-shots img{max-width:150px;max-height:200px;border-radius:6px;border:1px solid #ccc}

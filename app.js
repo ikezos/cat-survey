@@ -145,7 +145,7 @@ const run = (mode, fn, store = STORE) => {
     if (dbState === 'closed') return ng(dbErr('closed'));
     let t; try { t = db.transaction(store, mode); } catch { return ng(dbErr(dbState === 'closed' ? 'closed' : 'failed')); }
     const r = fn(t.objectStore(store));
-    t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(dbErr(t.error && t.error.name === 'QuotaExceededError' ? 'quota' : 'failed'));
+    t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => { const c = t.error && t.error.name === 'QuotaExceededError' ? 'quota' : 'failed'; logErr('保存の失敗: ' + c); ng(dbErr(c)); };
   }));
   const limit = new Promise((_, ng) => { timer = setTimeout(() => { late = true; ng(dbErr(dbState === 'blocked' ? 'blocked' : dbState === 'closed' ? 'closed' : 'timeout')); }, DB_WAIT_MS); });
   return Promise.race([work, limit]).finally(() => clearTimeout(timer));
@@ -392,7 +392,8 @@ async function api(action, extra = {}, ms) {
   if (r && r.ok && r.pass && !isCard() && auth) { auth.pass = r.pass; auth.passExp = Number(r.passExp) || 0; saveAuth(); }
   if (r && !isCard() && viaPass && r.error === 'pass_invalid') { auth.pass = ''; auth.passExp = 0; saveAuth(); renderAuth(); return r; }   // Google の人の通行証が使えない(期限切れ・登録から外された)→ 通行証を捨て、Google でログインし直してもらう
   if (r && !isCard() && ['token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token'].includes(r.error)) { auth.idToken = ''; delete auth.pending; saveAuth(); renderAuth(); }
-  if (r && DENY.includes(r.error) && auth) denyAccess(r.error);   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
+  if (r && DENY.includes(r.error) && auth) denyAccess(r.error);
+  if (r && !r.ok && !/^bug|^adminBug/.test(action) && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`受け付けの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
   return r || { ok: false, error: 'bad_response' };
 }
 // 送れない時の案内(0821)。送る時(sendNow)は WEAK_TEXT・SRV_TEXT + 端末に残っている旨。押してすぐ結果が要る操作(管理・元に戻す等)は WEAK_TEXT_TRY
@@ -604,7 +605,8 @@ function syncQuiet() {
   if (autoP) { syncAgain = true; return autoP; }   // 取り直しの最中に呼ばれたら(削除を押した等)、終わってからもう1回だけ(前は呼ばれた分を送らずに終えた)
   const ind = $('#refreshing'); if (ind) ind.classList.remove('hidden');
   return (autoP = (async () => {
-    try { const t0 = Date.now(); lastSendErr = null; await sendPending(true); if (lastRefreshAt < t0 && loggedIn() && navigator.onLine && !noAnswer(lastSendErr)) await refreshFromServer(true); }
+    try { const t0 = Date.now(); lastSendErr = null; await sendPending(true); if (lastRefreshAt < t0 && loggedIn() && navigator.onLine && !noAnswer(lastSendErr)) await refreshFromServer(true);
+      if (!noAnswer(lastSendErr)) { await bugFlush(true); await autoErrFlush(); } }   // 不具合の知らせの残り・1日1回の自動の誤り(0607)
     catch (e) { /* 自動の時は黙る(手で押した時に案内が出る) */ }
     finally { autoP = null; if (ind) ind.classList.add('hidden'); if (syncAgain) { syncAgain = false; setTimeout(() => syncQuiet(), 0); } }
   })());
@@ -612,17 +614,17 @@ function syncQuiet() {
 
 // ---- 写真: 位置情報を消し、縮めて、Blob にする ----
 // canvas に描き直して JPEG にすると、撮影場所(EXIF の GPS)を含む付属情報はすべて落ちる。
-async function cleanImage(file) {
+async function cleanImage(file, side = MAX_SIDE, quality = 0.8) {
   let src, w, h;
   try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); w = src.width; h = src.height; }
   catch {
     src = await new Promise((ok, ng) => { const u = URL.createObjectURL(file), i = new Image(); i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = ng; i.src = u; });
     w = src.naturalWidth; h = src.naturalHeight;
   }
-  const s = Math.min(1, MAX_SIDE / Math.max(w, h)), c = document.createElement('canvas');
+  const s = Math.min(1, side / Math.max(w, h)), c = document.createElement('canvas');
   c.width = Math.round(w * s); c.height = Math.round(h * s);
   c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-  return new Promise((ok, ng) => c.toBlob(b => b ? ok(b) : ng(new Error('写真を変換できません')), 'image/jpeg', 0.8));
+  return new Promise((ok, ng) => c.toBlob(b => b ? ok(b) : ng(new Error('写真を変換できません')), 'image/jpeg', quality));
 }
 
 let form = {}, photos = [], loc = null, saving = false;
@@ -1530,6 +1532,8 @@ async function renderAdmin() {
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
     <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}
     <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
+    <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
+      <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
       <button type="button" id="ad-wipe" class="wide danger">試しの記録をすべて消す…</button></div>`;
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
@@ -1594,6 +1598,7 @@ function onAdminClick(e) {
 }
 async function adminClick(b, e) {
   if (b.id === 'ad-wipe') return openWipe();
+  if (b.id === 'ad-bugs') return openBugAdmin();
   if (b.id === 'ad-add') {
     const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
     const r = await adminApi('adminAddGoogle', { email, role }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
@@ -1668,6 +1673,178 @@ function showCardResult({ secret, name, pin, fresh }) {
   $('#cr-close').onclick = () => { if (!confirm('閉じると、この合言葉は二度と表示されません。印刷か書き込みは済みましたか?')) return; closeSheet(); renderAdmin(); };
 }
 
+// ---- 不具合の知らせ(2026-10-27 0607・管理者 msg 6788〜6790)----
+// 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
+// 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
+// アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
+const APP_VER = 'cat-survey-v21';   // sw.js のキャッシュの名前と同じにする
+const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
+const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
+const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
+let lastScreen = 'record';
+const screenName = t => !loggedIn() ? 'ログイン' : TAB_SCREEN[t] || 'その他';
+// 端末の種類: OS とブラウザの名前と大きい版の数だけ(細かい型番・言語・画面の大きさは送らない)
+function deviceText() {
+  const u = navigator.userAgent || '', m = (re, i = 1) => { const x = re.exec(u); return x ? x[i] : ''; };
+  const os = /iPhone|iPad|iPod/.test(u) ? 'iOS ' + m(/OS (\d+)_/) : /Android/.test(u) ? 'Android ' + m(/Android (\d+)/) : /Windows/.test(u) ? 'Windows' : /Mac OS X/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'その他';
+  const br = /EdgA?\//.test(u) ? 'Edge ' + m(/EdgA?\/(\d+)/) : /SamsungBrowser/.test(u) ? 'Samsung ' + m(/SamsungBrowser\/(\d+)/) : /CriOS/.test(u) ? 'Chrome ' + m(/CriOS\/(\d+)/) : /FxiOS|Firefox/.test(u) ? 'Firefox ' + m(/(?:FxiOS|Firefox)\/(\d+)/)
+    : /Chrome\//.test(u) ? 'Chrome ' + m(/Chrome\/(\d+)/) : /Safari\//.test(u) ? 'Safari ' + m(/Version\/(\d+)/) : 'その他';
+  return (os.trim() + '・' + br.trim()).slice(0, 60);
+}
+// 誤りの文から、記録の中身・座標・メール・トークンらしい物を消す(受け付けの scrubText と同じ消し方。受け付けも書く前にもう一度通す)
+function scrubText(s, max = 200) {
+  s = String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]+/g, ' ');
+  s = s.replace(/(https?:\/\/[^\s?#'"<>]*)[?#][^\s'"<>]*/g, '$1?[略]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[メール]')
+    .replace(/eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(\.[A-Za-z0-9_-]*)?/g, '[トークン]')
+    .replace(/\b(ya29|Bearer)[ .][A-Za-z0-9._-]+/g, '[トークン]')
+    .replace(/[A-Za-z0-9_+\/=-]{20,}/g, '[長い文字列]')
+    .replace(/\b(?=[0-9a-z]*[0-9])(?=[0-9a-z]*[a-z])[0-9a-z]{8,19}\b/g, '[ID]')
+    .replace(/-?\d{1,3}\.\d{3,}/g, '[数]')
+    .replace(/\+?\d[\d -]{7,}\d/g, '[数字]')
+    .replace(/(["'「『])[^"'」』]{1,}?(["'」』])/g, '$1…$2')
+    .replace(/\s+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch { return d; } };
+const autoErrOn = () => cfg().autoErr !== false;
+// 誤りを1件控える(同じ文は回数を足す)。最大 ERR_MAX 件(古い物から捨てる)
+function logErr(msg) {
+  try {
+    const m = scrubText(msg); if (!m) return;
+    const log = lsGet(ERR_KEY, []), now = new Date().toISOString(), x = log.find(e => e.msg === m);
+    if (x) { x.n = (x.n || 1) + 1; x.last = now; x.screen = screenName(lastScreen); }
+    else log.push({ msg: m, n: 1, first: now, last: now, screen: screenName(lastScreen) });
+    log.sort((a, b) => a.last.localeCompare(b.last)); while (log.length > ERR_MAX) log.shift();
+    localStorage.setItem(ERR_KEY, JSON.stringify(log));
+  } catch { /* 控えられなくても、アプリは止めない */ }
+}
+const recentErrs = () => [...lsGet(ERR_BATCH, { items: [] }).items, ...lsGet(ERR_KEY, [])].sort((a, b) => String(b.last || '').localeCompare(String(a.last || ''))).slice(0, 5).map(e => ({ msg: e.msg, n: e.n || 1 }));
+window.addEventListener('error', e => { if (e && e.message) logErr('画面の誤り: ' + e.message + (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + (e.lineno || 0) + ')' : '')); });
+window.addEventListener('unhandledrejection', e => { const r = e && e.reason; logErr(r && DB_TEXT[r.code] ? '保存の入れ物: ' + r.code : '処理の誤り: ' + (r && (r.message || r.name) || String(r))); });
+// 1日1回、控えた誤りをまとめて送る。送る前のまとめ(番号つき)は残し、返事が届かなければ同じ番号で送り直す(受け付けが二重にしない)
+async function autoErrFlush() {
+  if (!autoErrOn() || !configured() || !loggedIn() || !navigator.onLine) return { sent: false, why: 'off' };
+  let batch = lsGet(ERR_BATCH, null);
+  if (!batch) {
+    if (localStorage.getItem(ERR_DAY) === todayText()) return { sent: false, why: 'today' };
+    const log = lsGet(ERR_KEY, []); if (!log.length) return { sent: false, why: 'empty' };
+    batch = { items: log.map(e => ({ ...e, cid: newId('e') })) }; localStorage.setItem(ERR_BATCH, JSON.stringify(batch)); localStorage.removeItem(ERR_KEY);
+  }
+  const ver = APP_VER, device = deviceText();
+  const r = await api('bugAuto', { items: batch.items.map(e => ({ msg: scrubText(e.msg), n: e.n, screen: e.screen, ver, device, cid: e.cid })) });
+  if (!r.ok && (noAnswer(r.error) || ['busy', 'not_logged_in', 'id_needed'].includes(r.error))) return { sent: false, why: r.error };   // 次の回にまた
+  localStorage.removeItem(ERR_BATCH); localStorage.setItem(ERR_DAY, todayText());   // 断られた(形が違う等)時も、繰り返さない
+  return { sent: !!r.ok, added: r.added };
+}
+// 手で送る知らせ: 別の入れ物(catSurveyBugs)に置き、送れたら外す
+let bugDbp = null;
+const bugDb = () => bugDbp || (bugDbp = new Promise((ok, ng) => { const q = indexedDB.open('catSurveyBugs', 1); q.onupgradeneeded = () => q.result.createObjectStore('bugs', { keyPath: 'cid' }); q.onsuccess = () => ok(q.result); q.onerror = () => { bugDbp = null; ng(q.error); }; }));
+const bugTx = (mode, fn) => bugDb().then(db => new Promise((ok, ng) => { const t = db.transaction('bugs', mode), r = fn(t.objectStore('bugs')); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(t.error); }));
+const bugAll = () => bugTx('readonly', s => s.getAll()).catch(() => []);
+async function renderBugPend() { const el = $('#bugpend'); if (!el) return; const n = (await bugAll()).filter(b => !auth || b.owner === (auth.recorderId || '')).length; el.textContent = n ? `まだ送れていない知らせが ${n} 件あります(電波が戻ったら送ります)` : ''; }
+let bugSending = false;
+async function bugFlush(quiet) {
+  if (bugSending || !configured() || !loggedIn() || !navigator.onLine) return { sent: 0 };
+  bugSending = true; let sent = 0, last = null;
+  try {
+    for (const b of (await bugAll()).filter(b => b.owner === (auth.recorderId || '')).sort((a, c) => a.at.localeCompare(c.at))) {
+      const r = await api('bugAdd', { bug: b.bug, photos: b.photos }, b.photos.length ? API_WAIT_PHOTO_MS : API_WAIT_MS);
+      if (!r.ok && (noAnswer(r.error) || r.error === 'busy')) { last = r; break; }   // 端末に残して、後で
+      await bugTx('readwrite', s => s.delete(b.cid));
+      if (r.ok) { sent++; const mineList = lsGet('catSurvey.myBugs', []); mineList.unshift(r.no); localStorage.setItem('catSurvey.myBugs', JSON.stringify(mineList.slice(0, 50))); toast(`受け付けました(番号 ${r.no})`, 6000); }
+      else toast(r.error === 'bug_limit' ? `不具合の知らせは、1日に ${r.max || 10} 件までです。明日また送ってください(この知らせは送れませんでした)` : `知らせを送れませんでした(${errText(r.error)})`, 8000);
+      last = r;
+    }
+  } finally { bugSending = false; renderBugPend(); }
+  return { sent, last };
+}
+// 画面の写しを縮める(長辺 1280px・canvas に描き直すので位置情報などの付属情報は落ちる)
+const shrinkShot = async file => blobToB64(await cleanImage(file, BUG_SIDE, 0.75));
+function openBugForm() {
+  if (!loggedIn()) return toast('ログインしてから送ってください');
+  const shots = [], from = screenName(lastScreen);
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>不具合を知らせる</b></div><div class="sheetbody"><div class="card">
+    <p class="warn">人の名前・住所・電話は書かないでください。</p>
+    <label class="fl">どの画面で<select id="bug-screen">${BUG_SCREENS.map(s => `<option${s === from ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
+    <label class="fl">何をしたら(${BUG_TEXT_MAX}字まで)<textarea id="bug-what" rows="3" maxlength="${BUG_TEXT_MAX}" placeholder="例: 一覧で猫を押した"></textarea></label>
+    <label class="fl">どうなった(${BUG_TEXT_MAX}字まで)<textarea id="bug-result" rows="3" maxlength="${BUG_TEXT_MAX}" placeholder="例: 画面が白くなった"></textarea></label>
+    <p class="note">画面の写し(なくてもよい・${BUG_PHOTOS}枚まで。送る前に縮めて、位置情報を消します)</p>
+    <label class="small filebtn">写しを選ぶ<input type="file" id="bug-shot" accept="image/*" multiple hidden></label><div id="bug-thumbs" class="thumbs"></div>
+    <p class="note">一緒に送るもの: アプリの版(${esc(APP_VER)})・端末の種類(${esc(deviceText())})・直前の誤り(${recentErrs().length}件)・送った時刻。場所・記録の中身・メールは送りません。送った人は入力者の番号で残ります。</p>
+    <p id="bug-msg" class="warn hidden"></p>
+    <button type="button" id="bug-send" class="primary">送る</button><button type="button" id="bug-cancel" class="wide">やめる</button></div></div>`);
+  const msg = t => { const el = $('#bug-msg'); el.textContent = t; el.classList.toggle('hidden', !t); };
+  const thumbs = () => { $('#bug-thumbs').innerHTML = shots.map((s, i) => `<span class="thumb"><img src="data:image/jpeg;base64,${s}" alt="写し${i + 1}"><button type="button" data-i="${i}" aria-label="外す">×</button></span>`).join(''); };
+  $('#s-back').onclick = $('#bug-cancel').onclick = () => closeSheet();
+  $('#bug-thumbs').onclick = e => { const b = e.target.closest('button[data-i]'); if (b) { shots.splice(+b.dataset.i, 1); thumbs(); } };
+  $('#bug-shot').onchange = async e => {
+    const files = [...e.target.files]; e.target.value = '';
+    for (const f of files) { if (shots.length >= BUG_PHOTOS) { msg(`画面の写しは ${BUG_PHOTOS} 枚までです`); break; } try { shots.push(await shrinkShot(f)); } catch { msg('この写しは読み込めませんでした'); } }
+    thumbs();
+  };
+  $('#bug-send').onclick = e => busy(e.currentTarget, async () => {
+    const what = $('#bug-what').value.trim(), result = $('#bug-result').value.trim();
+    if (!what && !result) return msg('「何をしたら」か「どうなった」を書いてください');
+    msg('');
+    const item = { cid: newId('b'), owner: auth.recorderId || '', at: new Date().toISOString(), photos: shots.slice(),
+      bug: { screen: $('#bug-screen').value, what: what.slice(0, BUG_TEXT_MAX), result: result.slice(0, BUG_TEXT_MAX), ver: APP_VER, device: deviceText(), errors: recentErrs(), cid: '' } };
+    item.bug.cid = item.cid;
+    try { await bugTx('readwrite', s => s.put(item)); } catch { return msg('この端末に控えられませんでした。もう一度押してください'); }
+    closeSheet();
+    if (!navigator.onLine) { toast('電波がありません。この端末に残して、電波が戻ったら送ります', 6000); return renderBugPend(); }
+    const r = await bugFlush(false);
+    if (!r.sent && r.last && (noAnswer(r.last.error) || r.last.error === 'busy')) toast(sendErrText(r.last.error).replace('記録は', '知らせは'), 7000);
+  }, '送っています…');
+}
+// 送った知らせの状態(自分の分だけ)
+async function openBugMine() {
+  if (!navigator.onLine) return toast('電波がある所で開いてください');
+  const r = await api('bugMine'); if (!r.ok) return toast(errText(r.error), 5000);
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>送った知らせ</b></div><div class="sheetbody">
+    ${r.items.length ? r.items.map(x => `<div class="card bugitem"><b>番号 ${esc(x.no)}</b> <span class="mark ${x.state === '済み' ? 'edit' : 'chg'}">${esc(x.state)}</span><div class="note">${esc(fmtShort(tms(x.time)))}・${esc(x.screen)}</div></div>`).join('') : '<div class="card"><p class="note">まだ送った知らせはありません</p></div>'}
+    <div class="card"><p class="note">状態は「新しい」→「対応中」→「済み」と変わります。中身は管理者だけが見られます。</p></div></div>`);
+  $('#s-back').onclick = () => closeSheet();
+}
+// 管理者: 不具合の知らせの一覧(新しい順・状態で絞る)・中身と画面の写し・状態とメモを変える
+let bugFilter = '';
+async function openBugAdmin() {
+  if (!(loggedIn() && auth.admin && !isCard())) return;
+  const r = await api('adminBugList'); if (!r.ok) return toast(errText(r.error), 5000);
+  const items = r.items.filter(x => !bugFilter || x.state === bugFilter);
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>不具合の知らせ(${r.items.length}件)</b></div><div class="sheetbody">
+    <div class="row seg" id="bugfilter">${['', '新しい', '対応中', '済み'].map(s => `<button type="button" class="small${s === bugFilter ? ' on' : ''}" data-f="${s}">${s || 'すべて'}(${r.items.filter(x => !s || x.state === s).length})</button>`).join('')}</div>
+    ${items.map(x => `<div class="card bugitem" data-no="${esc(x.no)}" role="button" tabindex="0"><b>番号 ${esc(x.no)}</b> <span class="mark ${x.state === '済み' ? 'edit' : 'chg'}">${esc(x.state)}</span>${x.kind === '自動' ? ' <span class="mark del">自動</span>' : ''}${x.photoCount ? ` <span class="note">写し ${x.photoCount}枚</span>` : ''}
+      <div class="note">${esc(fmtShort(tms(x.time)))}・${esc(x.screen)}・入力者 ID ${esc(x.recorderId.slice(0, 6))}</div><div class="bugtext">${esc((x.kind === '自動' ? x.errors + (x.count > 1 ? `(${x.count}回)` : '') : x.result || x.what).slice(0, 80))}</div></div>`).join('') || '<div class="card"><p class="note">ありません</p></div>'}</div>`);
+  $('#s-back').onclick = () => closeSheet();
+  $('#bugfilter').onclick = e => { const b = e.target.closest('button[data-f]'); if (b) { bugFilter = b.dataset.f; busy(b, openBugAdmin); } };
+  $('#sheet .sheetbody').onclick = e => { const c = e.target.closest('.bugitem'); if (c) { const x = r.items.find(y => y.no === c.dataset.no); if (x) openBugDetail(x); } };
+}
+async function openBugDetail(x) {
+  const line = (l, v) => v ? `<div class="line2"><span class="lbl">${esc(l)}</span><span class="pre">${esc(v)}</span></div>` : '';
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← 一覧へ</button><b>番号 ${esc(x.no)}</b></div><div class="sheetbody"><div class="card">
+    ${line('受付日時', fmtShort(tms(x.time)))}${line('種類', x.kind)}${line('入力者の番号', x.recorderId)}${line('画面', x.screen)}${line('何をしたら', x.what)}${line('どうなった', x.result)}${line('版', x.ver)}${line('端末', x.device)}${line('誤り', x.errors)}${x.kind === '自動' ? line('回数', String(x.count)) : ''}
+    <div id="bug-shots" class="thumbs">${Array.from({ length: x.photoCount }, (_, i) => `<span class="rph" data-n="${i + 1}"><span class="rphmsg">写し ${i + 1} 読み込み中…</span></span>`).join('')}</div></div>
+    <div class="card"><label class="fl">状態<select id="bug-state">${['新しい', '対応中', '済み'].map(s => `<option${s === x.state ? ' selected' : ''}>${s}</option>`).join('')}</select></label>
+    <label class="fl">管理者のメモ(500字まで)<textarea id="bug-memo" rows="3" maxlength="500">${esc(x.memo)}</textarea></label>
+    <button type="button" id="bug-save" class="primary">状態とメモを保存</button></div></div>`);
+  $('#s-back').onclick = () => openBugAdmin();
+  const blobs = [];
+  $('#bug-save').onclick = e => busy(e.currentTarget, async () => {
+    const r = await adminApi('adminBugSet', { no: x.no, state: $('#bug-state').value, memo: $('#bug-memo').value });
+    if (!r.ok) return toast(errText(r.error), 5000);
+    x.state = r.state; x.memo = r.memo; toast(`番号 ${x.no} を「${r.state}」にしました`);
+  }, '保存しています…');
+  for (let n = 1; n <= x.photoCount; n++) {
+    const el = $(`#bug-shots .rph[data-n="${n}"]`), r = await api('adminBugPhoto', { no: x.no, n }, API_WAIT_PHOTO_MS);
+    if (!el || !el.isConnected) return;
+    if (!r.ok) { el.querySelector('.rphmsg').textContent = '写しを読み込めません'; continue; }
+    const b = b64Blob(r.data), u = URL.createObjectURL(b); sheetUrls.push(u); blobs[n - 1] = b;
+    el.innerHTML = `<img src="${u}" alt="画面の写し ${n}" data-bugshot="${n - 1}">`;
+  }
+  $('#bug-shots').onclick = e => { const im = e.target.closest('img[data-bugshot]'); if (im) openViewer(blobs.filter(Boolean), +im.dataset.bugshot); };
+}
+
 // ---- 見本データ(名古屋市内・個人情報なし。設定で SHOW_DEMO か、URL に ?demo がある時だけボタンが出る) ----
 async function demo() {
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -1686,10 +1863,11 @@ async function demo() {
 function showTab(t) {
   if (!loggedIn() && t !== 'record') t = 'record';   // ログインしていない人は、ログインの画面(入力の欄)にしか行けない
   if (t !== 'map' && picking) setPicking(false); // 地図指定の途中で離れたら取り消す
+  if (t !== 'settings') lastScreen = t;   // 不具合の知らせの「どの画面で」の初めの選び(0607)
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
   document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
   renderScopeBar();
-  if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') renderAuth(); if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
+  if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') { renderAuth(); renderBugPend(); } if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
   if (t === 'map') {
     renderMap();
     if (mapFocus) { initMap(); map.invalidateSize(); map.setView([mapFocus.lat, mapFocus.lng], 17, { animate: false }); mapFocus = null; mapAuto = true; }
@@ -1740,6 +1918,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-send').onclick = e => busy(e.currentTarget, () => sendPending(false), '送っています…');
   $('#btn-refresh').onclick = e => busy(e.currentTarget, () => refreshFromServer(false).catch(err => toast(dbErrText(err), 6000)), '取り直しています…');
   $('#btn-logout').onclick = logout;
+  $('#btn-bug').onclick = () => openBugForm();
+  $('#btn-bugmine').onclick = e => busy(e.currentTarget, openBugMine, '読み込んでいます…');
+  $('#autoerr').checked = autoErrOn(); $('#autoerr').onchange = e => { saveCfg({ autoErr: e.target.checked }); toast(e.target.checked ? 'アプリの誤りを自動で知らせます' : 'アプリの誤りを自動で知らせるのを止めました'); };
   if (CONF.SHOW_DEMO || new URLSearchParams(location.search).has('demo')) $('#btn-demo').classList.remove('hidden');
   $('#btn-demo').onclick = demo;
   $('#btn-clear').onclick = async () => { if (confirm('この端末の記録を、すべて消します。よろしいですか?')) { await clearAll(); await updateBadge(); renderList(); toast('消しました'); } };

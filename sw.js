@@ -1,6 +1,6 @@
 // オフラインで画面を開けるようにする簡易キャッシュ(地図の下絵は対象外)。
 // 通信できるときは常に最新を取りに行き(取れたら控えを更新)、通信できないときだけ控えを使う。
-const CACHE = 'cat-survey-v20';
+const CACHE = 'cat-survey-v21';
 const FILES = ['./', './index.html', './help.html', './app.js', './config.js', './style.css', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png',
   './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css', './scan.js', './lib/images/layers.png', './lib/images/layers-2x.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));

@@ -122,11 +122,14 @@
     <p id="authinfo" class="note"></p>
     <button id="btn-logout" class="wide">ログアウト</button>
   </div>
-  <div class="card" id="feedback">
-    <h3>ご意見を送る</h3>
-    <p class="note">使いにくい所・選択肢の希望などを教えてください(選択肢は、管理者がシートで変えられます)。個人の名前や住所は書かないでください。</p>
-    <a class="linkbtn" id="fb-mail" href="mailto:support@ikezos.com?subject=%E5%9C%B0%E5%9F%9F%E7%8C%AB%E9%A0%AD%E6%95%B0%E8%AA%BF%E6%9F%BB%E3%82%A2%E3%83%97%E3%83%AA%E3%81%B8%E3%81%AE%E3%81%94%E6%84%8F%E8%A6%8B">メールで送る(support@ikezos.com)</a>
-    <p class="note">分からない事は、管理者に聞いてください。</p>
+  <div class="card" id="bugcard">
+    <h3>不具合を知らせる</h3>
+    <p class="note">おかしな動き・困った事を、アプリから管理者へ知らせます。電波が無い時は、この端末に残して後で送ります。分からない事は、管理者に聞いてください。</p>
+    <button id="btn-bug" class="primary">不具合を知らせる</button>
+    <button id="btn-bugmine" class="wide">送った知らせ</button>
+    <p id="bugpend" class="note"></p>
+    <label class="chkline"><input type="checkbox" id="autoerr" checked> アプリの誤りを自動で知らせる</label>
+    <p class="note">アプリが自分で気付いた誤りを、1日1回まとめて送ります。場所・記録の中身・メールは送りません。</p>
   </div>
   <div class="card">
     <h3>送り先</h3>

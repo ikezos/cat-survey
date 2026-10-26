@@ -13,15 +13,17 @@
 - 一覧を開いた時は「すべて」(未送信も送信済みも)が出ます。
 - 送れない時は、端末に残して1分ごとに自動で送り直します。
 - 管理者は、本番の前に「試しの記録をすべて消す」が使えます(2回の確かめつき)。
+- 設定の「不具合を知らせる」から、文と画面の写し(任意)を管理者へ送れます。アプリが自分で気付いた誤りも1日1回まとめて送ります(設定で止められます)。場所・記録の中身・メールは送りません。
 - 使い方: https://cats.ikezos.com/help.html
 
 ## 受け付けの覚え書き
 
-- シート: 記録・入力者・設定・変化・えさ場・選択肢・通行証・管理の記録・検算
+- シート: 記録・入力者・設定・変化・えさ場・選択肢・通行証・管理の記録・検算・不具合の知らせ
   - 「記録」の右端(39列目)は「不妊手術」(済み・まだ・分からない)。
   - 「検算」は表計算の式だけで数え直すシートです(えさ場ごと・区画ごと)。列は、今いる猫・さくら耳あり/なし/確認できず・さくら耳ありの割合・手術済み(頭)・手術済みの割合・飼い猫の可能性あり・いなくなった。
-- 呼び出し: cardLogin・whoami・list・photo・submit・edit・change・siteAdd・siteEdit・passRevoke・delete・restore・siteDelete・siteRestore・admin〜(管理者だけ)
+- 呼び出し: cardLogin・whoami・list・photo・submit・edit・change・siteAdd・siteEdit・passRevoke・delete・restore・siteDelete・siteRestore・bugAdd・bugAuto・bugMine・admin〜(管理者だけ。adminBugList・adminBugPhoto・adminBugSet を含む)
   - `photo` は写真を渡します。見てよい人は `list` と同じ(本人・全体を見る役割の人・管理者)。ドライブのファイル ID やリンクは返しません。appsscript.json の権限は変わりません。
+  - `bugAdd` の画面の写しは、写真のフォルダの中の「不具合の写し」に置きます(フォルダの ID はスクリプト プロパティ)。
 
 ## 一緒に開発してくださる方へ
 
