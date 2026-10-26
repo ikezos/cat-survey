@@ -9,6 +9,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="lib/leaflet.css">
+<link rel="stylesheet" href="lib/MarkerCluster.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="locked">
@@ -47,6 +48,7 @@
   <div class="auto card">
     <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログインしていません</span></div>
     <div id="locinfo" class="locinfo">位置: 取得中…</div>
+    <div id="locmini" class="locmini hidden" aria-label="地図で選んだ場所"></div>
     <div class="row"><button type="button" id="btn-gps" class="small">位置を取り直す</button>
     <button type="button" id="btn-pick" class="small">地図で場所を指定</button></div>
   </div>
@@ -57,7 +59,7 @@
     <div id="siteask" class="siteask hidden" role="alert"></div>
     <p id="sitenone" class="note"></p>
     <button type="button" id="btn-site-new" class="small">この場所を新しいえさ場に登録</button>
-    <p class="note">家に帰ってから入力する時は、上の「地図で場所を指定」で猫がいた場所を押すと、そこから近いえさ場が上に出ます。遠いえさ場を選んでも、猫の位置をえさ場の位置にできます。</p>
+    <p class="note">家に帰ってから入力する時は、上の「地図で場所を指定」で猫がいた場所を押してピンを立て、「ここで確定」を押すと、そこから近いえさ場が上に出ます。遠いえさ場を選んでも、猫の位置をえさ場の位置にできます。</p>
   </div>
   <div id="fields"></div>
   <div class="card">
@@ -89,12 +91,12 @@
   <div id="list"></div>
 </section>
 <section id="tab-map" class="tab">
-  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず <span class="siteicon sm"></span>えさ場 <span class="dot me"></span>今の場所 <span class="dot away"></span>いなくなった</div>
+  <div class="legend"><span class="dot ear"></span>さくら耳あり <span class="dot noear"></span>なし <span class="dot unk"></span>確認できず <span class="siteicon sm"></span>えさ場 <span class="dot me"></span>今の場所 <span class="dot away"></span>いなくなった <span class="clu legclu"><b>3</b></span>近くにまとまった猫の数(押すと広がります。<span class="siteicon sm"></span>付きは、えさ場も入っている)</div>
   <label class="line chk gonetoggle"><input type="checkbox" class="showgone" id="mapshowgone"><span>いなくなった猫も見る(灰色の薄い印)</span></label>
   <div class="row maprow"><button type="button" id="btn-here" class="small primaryish">📍 今の場所へ</button></div>
-  <div id="pickmsg" class="warn hidden">地図の、<span id="pickwhat">猫がいた場所</span>をタップしてください。
-    <button type="button" id="btn-pickcancel" class="small">やめる</button></div>
-  <div id="map"></div>
+  <div id="pickmsg" class="warn hidden">地図の、<span id="pickwhat">猫がいた場所</span>を押してください。ピンが立ちます(押し直すと動きます。ピンは指で動かせます)。<br><b id="pickstate">まだ選んでいません</b></div>
+  <div class="mapwrap"><div id="map"></div>
+    <div id="pickbtns" class="pickbtns hidden"><button type="button" id="btn-pickok" class="primary" disabled>ここで確定</button><button type="button" id="btn-pickcancel">やめる</button></div></div>
   <p class="note">自分が記録した猫とえさ場だけが出ます(「全員の記録」の役割がある人は切り替えられます)。電波がないときは、地図の下絵が出ないことがあります(猫の印は出ます)。</p>
 </section>
 <section id="tab-sites" class="tab">
@@ -103,7 +105,7 @@
     <p class="note">猫がよく集まる餌場・たまり場を登録しておくと、入力の時に近くのえさ場を選んで、猫をまとめられます。登録は自分用で、一覧と地図に出るのは自分の分だけです。</p>
     <button type="button" id="btn-site-here" class="primary">今の位置でえさ場を登録</button>
     <button type="button" id="btn-site-pick" class="wide">地図で場所を指定して登録</button>
-    <p class="note"><b>その場にいなくても登録できます。</b>家などからは「地図で場所を指定して登録」を押し、地図でえさ場の場所を押してください。</p>
+    <p class="note"><b>その場にいなくても登録できます。</b>家などからは「地図で場所を指定して登録」を押し、地図でえさ場の場所を押してピンを立て、「ここで確定」を押してください。</p>
   </div>
   <div id="sitelist"></div>
 </section>
@@ -124,7 +126,7 @@
     <h3>ご意見を送る</h3>
     <p class="note">使いにくい所・選択肢の希望などを教えてください(選択肢は、管理者がシートで変えられます)。個人の名前や住所は書かないでください。</p>
     <a class="linkbtn" id="fb-mail" href="mailto:support@ikezos.com?subject=%E5%9C%B0%E5%9F%9F%E7%8C%AB%E9%A0%AD%E6%95%B0%E8%AA%BF%E6%9F%BB%E3%82%A2%E3%83%97%E3%83%AA%E3%81%B8%E3%81%AE%E3%81%94%E6%84%8F%E8%A6%8B">メールで送る(support@ikezos.com)</a>
-    <a class="linkbtn" id="fb-gh" href="https://github.com/ikezos/cat-survey/issues" target="_blank" rel="noopener">GitHub の Issues で送る</a>
+    <p class="note">分からない事は、管理者に聞いてください。</p>
   </div>
   <div class="card">
     <h3>送り先</h3>
@@ -141,6 +143,7 @@
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
 <script src="lib/leaflet.js"></script>
+<script src="lib/leaflet.markercluster.js"></script>
 <script src="lib/qr.js"></script>
 <script src="lib/jsQR.js"></script>
 <script src="scan.js"></script>

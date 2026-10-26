@@ -694,7 +694,7 @@ function setLocInfo(text, bad) { const el = $('#locinfo'); el.textContent = text
 let gpsToken = 0;
 function getGps() {
   const my = ++gpsToken;
-  loc = null; setLocInfo('位置: 取得中…'); checkDup(); renderSiteCands();
+  loc = null; setLocInfo('位置: 取得中…'); showLocMini(); checkDup(); renderSiteCands();
   if (!navigator.geolocation) return setLocInfo('位置: この端末では取得できません。「地図で場所を指定」を押してください', true);
   navigator.geolocation.getCurrentPosition(p => { if (my === gpsToken) setLoc(p.coords.latitude, p.coords.longitude, Math.round(p.coords.accuracy), 'GPS'); },
     () => { if (my === gpsToken) setLocInfo('位置: 取得できませんでした。位置情報の許可を確かめるか、「地図で場所を指定」を押してください', true); },
@@ -702,13 +702,19 @@ function getGps() {
 }
 // src: 'GPS' / '地図' / SITE_LOC_SRC(えさ場の位置にした。siteName = そのえさ場の名前)。記録の「位置の取り方」に残る
 const SITE_LOC_SRC = 'えさ場の位置';
+// 地図で選んだ時だけ、入力の画面に小さな地図(ピン)を出し、ボタンを「地図で選び直す」にする(2026-10-26 2105)
+function showLocMini() {
+  const on = !!(loc && loc.src === '地図'), el = $('#locmini');
+  el.classList.toggle('hidden', !on); $('#btn-pick').textContent = on ? '地図で選び直す' : '地図で場所を指定';
+  if (on) miniMap(el, loc.lat, loc.lng);
+}
 function setLoc(lat, lng, acc, src, siteName) {
   if (src !== 'GPS') gpsToken++;
   loc = { lat, lng, acc, src }; renderSiteCands();
   if (src === 'GPS') setLocInfo(`位置: GPSで取得(誤差 約${acc}m)${acc > 50 ? '。誤差が大きめです。取り直すと良くなることがあります' : ''}`, acc > 50);
   else if (src === SITE_LOC_SRC) setLocInfo(`位置: えさ場「${siteName || ''}」の位置にしました`);
-  else setLocInfo('位置: 地図で指定しました');
-  checkDup();
+  else setLocInfo('位置: 地図で選んだ場所(下の地図のピンの所)');
+  showLocMini(); checkDup();
   if (form.siteId) onSitePick(form.siteId); else hideSiteAsk();   // 選んでいるえさ場から100mより遠くなったら、もう一度聞く
 }
 
@@ -902,20 +908,53 @@ async function renderList() {
 }
 
 // ---- 地図 ----
-let map, layer, meLayer, picking = false, pickTarget = 'cat', mapAuto = false, mapFocus = null;
-function setPicking(on) { picking = on; $('#pickmsg').classList.toggle('hidden', !on); $('#pickwhat').textContent = pickTarget === 'site' ? 'えさ場にする場所' : '猫がいた場所'; }
+let map, layer, meLayer, picking = false, pickTarget = 'cat', pickPin = null, pickCtx = null, mapAuto = false, mapFocus = null;
+// 地図で場所を選ぶ(2026-10-26 2105): 地図を押すとピンが立つ(押し直すと動く・ピンは指で動かせる)→「ここで確定」で決まる。確定するまで元の画面に戻らない
+function setPicking(on) {
+  picking = on; $('#pickmsg').classList.toggle('hidden', !on); $('#pickbtns').classList.toggle('hidden', !on); $('#pickwhat').textContent = pickTarget === 'site' ? 'えさ場にする場所' : '猫がいた場所';
+  if (pickPin) { pickPin.remove(); pickPin = null; }
+  $('#btn-pickok').disabled = true; $('#pickstate').textContent = 'まだ選んでいません';
+  if (!on) pickCtx = null;
+}
+// ctx = { from: 前の場所 {lat,lng}(あれば地図をそこへ寄せる), ok(lat, lng): 確定した時, cancel(): やめた時 }
+function startPick(target, ctx) {
+  pickTarget = target; if (ctx.from && isFinite(ctx.from.lat)) mapFocus = { lat: ctx.from.lat, lng: ctx.from.lng };
+  showTab('map'); setPicking(true); pickCtx = ctx;
+}
+const pinIcon = () => L.divIcon({ className: 'pickpin-wrap', html: '<span class="pickpin"></span>', iconSize: [36, 48], iconAnchor: [18, 46] });
+function placePin(ll) {
+  if (pickPin) pickPin.setLatLng(ll);
+  else pickPin = L.marker(ll, { icon: pinIcon(), draggable: true, autoPan: true, keyboard: false, zIndexOffset: 10000, title: '選んだ場所(指で動かせます)' }).addTo(map);
+  $('#btn-pickok').disabled = false; $('#pickstate').textContent = 'ピンの場所でよければ「ここで確定」を押してください';
+}
+// 選んだ場所を小さな地図にピンで出す(入力の画面・えさ場の登録の画面)。動かせない地図
+function miniMap(el, lat, lng) {
+  if (!el || typeof L === 'undefined') return;
+  if (el._mm) { el._mm.remove(); el._mm = null; }
+  const m = el._mm = L.map(el, { zoomControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false, attributionControl: false }).setView([lat, lng], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+  L.marker([lat, lng], { icon: pinIcon(), interactive: false, keyboard: false }).addTo(m);
+  setTimeout(() => { m.invalidateSize(); m.setView([lat, lng], 17, { animate: false }); }, 60);
+}
 const siteIcon = () => L.divIcon({ className: 'siteicon-wrap', html: '<span class="siteicon"></span>', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -14] });
+// 猫の印(丸)。まとめの部品で扱えるよう、丸い形の印(divIcon)にした(2026-10-26 2105)
+const catColor = r => isGone(r) ? '#bbb' : hasEar(r) ? '#d6336c' : r.ear === 'なし' ? '#1971c2' : '#888';
+const catIcon = r => { const g = isGone(r), s = g ? 16 : 22; return L.divIcon({ className: 'catdot' + (g ? ' awaydot' : ''), html: `<span style="background:${catColor(r)}"></span>`, iconSize: [s, s], iconAnchor: [s / 2, s / 2], popupAnchor: [0, -s / 2] }); };
+// 近い所の印をまとめる丸(2026-10-26 2105): 数字 = その中の猫の数。えさ場が入っている時は、ひし形の印(2か所以上なら数も)を右上に添える
+function clusterIcon(c) {
+  const ms = c.getAllChildMarkers(), cats = ms.filter(m => m.options.kind === 'cat').length, sites = ms.length - cats, sz = cats >= 100 ? 50 : cats >= 10 ? 44 : 38;
+  const label = `${cats ? `猫${cats}頭` : ''}${cats && sites ? '・' : ''}${sites ? `えさ場${sites}か所` : ''}。押すと広がります`;
+  return L.divIcon({ className: 'clu-wrap', iconSize: [sz, sz], html: `<div class="clu${cats ? '' : ' onlysite'}" data-cats="${cats}" data-sites="${sites}" role="button" aria-label="${label}" title="${label}"><b>${cats || ''}</b>${sites ? `<span class="clu-site"><i class="siteicon"></i>${sites > 1 ? `<em>${sites}</em>` : ''}</span>` : ''}</div>` });
+}
 function initMap() {
   if (map || typeof L === 'undefined') return;
-  map = L.map('map').setView([35.155, 136.93], 13);
+  map = L.map('map', { maxZoom: 19 }).setView([35.155, 136.93], 13);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
-  layer = L.layerGroup().addTo(map); meLayer = L.layerGroup().addTo(map);
+  // 同じ場所(いちばん拡大しても分かれない)の物は、丸を押すと周りに広がる(spiderfy)
+  layer = (L.markerClusterGroup ? L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false, spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true, spiderfyDistanceMultiplier: 1.6, iconCreateFunction: clusterIcon }) : L.layerGroup()).addTo(map);
+  meLayer = L.layerGroup().addTo(map);
   $('#map').addEventListener('click', e => { const b = e.target.closest('button[data-open]'); if (b) openDetail(b.dataset.open); });
-  map.on('click', e => {
-    if (!picking) return; setPicking(false);
-    if (pickTarget === 'site') { showTab('sites'); openSiteForm({ lat: e.latlng.lat, lng: e.latlng.lng, acc: null, src: '地図' }); }
-    else { setLoc(e.latlng.lat, e.latlng.lng, null, '地図'); showTab('record'); }
-  });
+  map.on('click', e => { if (picking) placePin(e.latlng); });
 }
 // 今の場所(青い丸 = 誤差の広がり)を描く
 function drawMe(g) {
@@ -941,10 +980,9 @@ async function renderMap() {
   initMap(); if (!map) return; layer.clearLayers();
   const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x]));
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
-  (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.circleMarker([r.lat, r.lng], isGone(r) ? { radius: 8, weight: 1, color: '#999', fillOpacity: .3, opacity: .6, className: 'catdot awaydot', fillColor: '#bbb' }
-    : { radius: 10, weight: 2, color: '#fff', fillOpacity: .9, className: 'catdot', fillColor: hasEar(r) ? '#d6336c' : r.ear === 'なし' ? '#1971c2' : '#888' })
+  (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${r.color || ''}` })
     .bindPopup(`<b>${esc(r.color)}</b>${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
-  liveSites(sites).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), title: x.name, keyboard: false })
+  liveSites(sites).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
     .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${scope === 'all' && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
 }
@@ -1001,14 +1039,25 @@ async function startSiteHere(after) {
   openSiteForm({ ...g, src: 'GPS' }, after);
 }
 // えさ場を登録する画面。pos = {lat,lng,acc,src}。保存後に after(site) を呼ぶ(無ければ、えさ場の画面に戻る)
-function openSiteForm(pos, after) {
+// keep = { name, memo }(地図で選び直した後に、書きかけの名前・メモを戻す)
+function openSiteForm(pos, after, keep) {
+  const picked = pos.src === '地図';
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>えさ場を登録</b></div>
   <div class="sheetbody"><div class="warn">猫がよく集まる餌場・たまり場を、自分用に登録します。出るのは自分の一覧と地図だけです(管理者が「全体を見る」役割にした人は全員分を見られます)。<br>名前は短く。人の名前や住所は書かないでください。</div>
-  <div class="card"><p class="note" id="sf-loc">位置: ${pos.src === 'GPS' ? `GPSで取得(誤差 約${pos.acc}m)` : pos.src === '地図' ? '地図で指定しました' : esc(pos.src || '')}　メッシュ ${esc((meshCodes(pos.lat, pos.lng) || {}).mesh500 || '')}</p>
+  <div class="card"><p class="note" id="sf-loc">位置: ${pos.src === 'GPS' ? `GPSで取得(誤差 約${pos.acc}m)` : picked ? '地図で選んだ場所(下の地図のピンの所)' : esc(pos.src || '')}　メッシュ ${esc((meshCodes(pos.lat, pos.lng) || {}).mesh500 || '')}</p>
+  ${picked ? '<div id="sf-mini" class="locmini"></div>' : ''}<button type="button" id="sf-repick" class="small">${picked ? '地図で選び直す' : '地図で場所を選ぶ'}</button>
   <label class="fl">名前<input id="sf-name" type="text" maxlength="${SITE_NAME_MAX}" placeholder="例: 公園の東の入口"></label>
   <label class="fl">メモ(任意)<input id="sf-memo" type="text" maxlength="${SITE_MEMO_MAX}" placeholder="例: 朝に餌をあげる人が来る"></label></div>
   <button type="button" id="sf-save" class="primary">このえさ場を登録する</button><button type="button" id="sf-cancel" class="wide">やめる</button></div>`);
+  if (keep) { $('#sf-name').value = keep.name || ''; $('#sf-memo').value = keep.memo || ''; }
+  if (picked) miniMap($('#sf-mini'), pos.lat, pos.lng);
   $('#s-back').onclick = $('#sf-cancel').onclick = () => closeSheet();
+  // 地図で選び直す: 確定したら新しい場所で、やめたら前の場所のまま、この画面に戻る(書きかけの名前・メモはそのまま)
+  $('#sf-repick').onclick = () => {
+    const back = ($('.tab.active') || { id: 'tab-sites' }).id.slice(4), k = { name: $('#sf-name').value, memo: $('#sf-memo').value };
+    closeSheet();
+    startPick('site', { from: pos, ok: (lat, lng) => { showTab(back); openSiteForm({ lat, lng, acc: null, src: '地図' }, after, k); }, cancel: () => { showTab(back); openSiteForm(pos, after, k); } });
+  };
   const siteId = newId('s');   // この画面で登録するえさ場の ID は1つだけ(何度押しても同じ ID。受け付けも同じ ID は1回だけ受ける)
   $('#sf-save').onclick = e => busy(e.currentTarget, async () => {
     if (sheetBusy) return;
@@ -1657,8 +1706,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#tab-admin').onclick = onAdminClick; $('#tab-admin').onchange = onAdminChange;
   document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
   $('#btn-gps').onclick = getGps;
-  $('#btn-pick').onclick = () => { pickTarget = 'cat'; showTab('map'); setPicking(true); };
-  $('#btn-pickcancel').onclick = () => { const back = pickTarget === 'site' ? 'sites' : 'record'; setPicking(false); showTab(back); };
+  $('#btn-pick').onclick = () => startPick('cat', { from: loc, ok: (lat, lng) => { showTab('record'); setLoc(lat, lng, null, '地図'); }, cancel: () => showTab('record') });
+  $('#btn-pickok').onclick = () => { if (!pickPin) return; const p = pickPin.getLatLng(), c = pickCtx; setPicking(false); if (c) c.ok(p.lat, p.lng); };
+  $('#btn-pickcancel').onclick = () => { const c = pickCtx, back = pickTarget === 'site' ? 'sites' : 'record'; setPicking(false); if (c) c.cancel(); else showTab(back); };
   $('#btn-here').onclick = () => locateMe(false);
   $('#scopebar').onclick = e => { const b = e.target.closest('button[data-scope]'); if (b) busy(b, () => setScope(b.dataset.scope), b.textContent); };
   $('#showdel').onchange = e => { showDeleted = e.target.checked; setScope('all'); };   // 管理者の「削除済みも見る」
@@ -1668,7 +1718,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     openSiteForm({ lat: loc.lat, lng: loc.lng, acc: loc.acc, src: loc.src === 'GPS' ? 'GPS' : '地図' }, async site => { form.siteId = site.id; await renderSiteCands(); });
   };
   $('#btn-site-here').onclick = () => startSiteHere();
-  $('#btn-site-pick').onclick = () => { pickTarget = 'site'; showTab('map'); setPicking(true); };
+  $('#btn-site-pick').onclick = () => startPick('site', { ok: (lat, lng) => { showTab('sites'); openSiteForm({ lat, lng, acc: null, src: '地図' }); }, cancel: () => showTab('sites') });
   $('#sitelist').onclick = e => {
     const b = e.target.closest('button[data-act]'), card = e.target.closest('.site'); if (!b || !card) return; const id = card.dataset.id, a = b.dataset.act;
     if (a === 'rename') openSiteEdit(id); else if (a === 'retire') busy(b, () => setSiteRetired(id, true)); else if (a === 'restore') busy(b, () => setSiteRetired(id, false));

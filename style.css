@@ -124,3 +124,19 @@ label.fl:has(#wipe-discard){display:flex;gap:10px;align-items:flex-start}
 .rthumbs .rph{width:96px;height:96px}
 .rthumbs .rph.err{width:120px}
 .vwload .vwretry{margin-top:8px;font-size:15px}
+/* 2026-10-26 2105: 地図で場所を選ぶ(ピン・ここで確定)・選んだ場所の小さな地図・近い印のまとめ(丸の中の数字) */
+.mapwrap{position:relative}.pickbtns{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:1500;display:flex;gap:8px}   /* 地図が長くても、ボタンは画面の下にいつも見える */
+.pickbtns button{flex:1;min-height:52px;font-size:17px;border-radius:10px;box-shadow:0 2px 8px #0006;margin:0}
+.pickbtns button:not(.primary){background:#fff;border:2px solid #888}.pickbtns button:disabled{opacity:.55}
+.pickpin-wrap{background:none;border:0}.pickpin{display:block;position:relative;width:36px;height:48px}
+.pickpin::before{content:"";position:absolute;left:3px;top:0;width:30px;height:30px;background:#e03131;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 4px #0007;box-sizing:border-box}
+.pickpin::after{content:"";position:absolute;left:14px;top:11px;width:8px;height:8px;background:#fff;border-radius:50%}
+.locmini{height:150px;border-radius:8px;margin:6px 0;border:1px solid #bbb;pointer-events:none}
+.catdot{background:none;border:0}.catdot span{display:block;width:100%;height:100%;border-radius:50%;border:2px solid #fff;box-sizing:border-box;box-shadow:0 0 0 1px #0004;opacity:.95}
+.catdot.awaydot span{border:1px solid #999;opacity:.6}
+.clu-wrap{background:none;border:0}.clu{position:relative;width:100%;height:100%;border-radius:50%;background:#5f3dc4;border:3px solid #fff;box-shadow:0 0 0 2px #5f3dc4,0 2px 5px #0006;color:#fff;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.clu b{font-size:17px;line-height:1}.clu.onlysite{background:#fff3d9;box-shadow:0 0 0 2px #8a5a00,0 2px 5px #0006}
+.clu-site{position:absolute;right:-10px;top:-10px;display:flex;align-items:center;gap:1px;background:#fff;border-radius:10px;padding:1px 3px 1px 2px;box-shadow:0 0 0 1px #8a5a00}
+.clu-site .siteicon{width:12px;height:12px;border-width:2px;margin:2px}.clu-site em{font-style:normal;font-size:12px;color:#5a3a00;font-weight:bold}
+.clu.onlysite .clu-site{position:static;box-shadow:none;background:none}.clu.onlysite .clu-site .siteicon{width:16px;height:16px}
+.legclu{display:inline-flex;width:22px;height:22px;margin:0 3px 0 8px;vertical-align:middle;border-width:2px}.legclu b{font-size:12px}
