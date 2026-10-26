@@ -20,6 +20,7 @@ function meshCodes(lat, lng) {
 const FIELDS = [
   ['color', '毛色・模様', ['茶トラ', 'キジトラ', 'サバトラ', '黒', '白', '三毛', 'サビ', 'ハチワレ', '茶白', 'キジ白', 'サバ白', 'ポインテッド', 'その他'], 'ポインテッド=顔・耳・足・尻尾だけ色が濃い猫'],
   ['ear', 'さくら耳', ['右', '左', 'なし', '確認できず'], '耳の先が桜の花びらの形に切ってある印(不妊手術が済んだ猫)。どちらの耳か選んでください'],
+  ['neuter', '不妊手術', ['済み', 'まだ', '分からない'], 'さくら耳が右か左なら自動で「済み」になります(直せます)。耳の印が無くても、手術済みと分かっていれば「済み」を選んでください'],
   ['managed', '地域猫として世話されているか', ['されている', 'いない', '不明']],
   ['feeder', '餌をあげている人', ['いる', 'いない', '不明']],
   ['pet', '飼い猫の可能性(任意)', ['あり', 'なし', 'わからない'], '飼い主がいそうな猫かどうか。もう一度押すと選びなおせます'],
@@ -31,9 +32,9 @@ const FIELDS = [
 ];   // 首輪は別の項目にしない(飼い猫の可能性の理由「首輪がある」で表す)
 const FIELDS_BUILTIN = FIELDS.map(f => [f[0], f[2].slice()]);
 const REQUIRED = ['color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame'];
-const PET_REASONS = ['首輪がある', '人にとても慣れている', '毛並みがきれい', '家に出入りしている', 'その他'], PET_OTHER_MAX = 30;   // 選び肢シートで変わる(applyOptions が中身を入れ替える)
+const PET_REASONS = ['首輪がある', '人にとても慣れている', '毛並みがきれい', '家に出入りしている', 'その他'], PET_OTHER_MAX = 30;   // 選択肢シートで変わる(applyOptions が中身を入れ替える)
 const PET_REASONS_BUILTIN = PET_REASONS.slice();
-// いなくなった(2026-10-26 0002)。削除(入力の間違い用)とは別。理由は選び肢シートで変わる。記録の goneAt(日)が空なら今いる猫
+// いなくなった(2026-10-26 0002)。削除(入力の間違い用)とは別。理由は選択肢シートで変わる。記録の goneAt(日)が空なら今いる猫
 const GONE_REASONS = ['見かけなくなった(行方不明)', '保護・譲渡された', '飼い主が見つかった', '亡くなった', 'その他'], GONE_OTHER_MAX = 30, GONE_REASONS_BUILTIN = GONE_REASONS.slice();
 const isGone = r => !!(r && r.goneAt);
 const goneReasonText = t => { t = String(t || ''); return t.indexOf('その他:') === 0 ? `その他(${t.slice(4)})` : t; };
@@ -44,12 +45,12 @@ const UNKNOWN_EAR = '確認できず';
 const MAX_PHOTOS = 3, MAX_SIDE = 1600;
 // 受け付けへ送る項目(入力者IDは送らない。受け付けがログインから決める)
 // 送った後に「状態が変わった」として足せる項目(受け付けの CHANGE_FIELDS と同じ)
-const CHANGE_ITEMS = ['ear', 'managed', 'feeder', 'body', 'pet'];   // + えさ場の付け替え(siteId)
+const CHANGE_ITEMS = ['ear', 'neuter', 'managed', 'feeder', 'body', 'pet'];   // + えさ場の付け替え(siteId)
 // 「間違いを直す」で直せる項目(位置・日時・写真は直せない)
-const EDIT_FIELD_KEYS = ['color', 'ear', 'managed', 'feeder', 'pet', 'age', 'sex', 'body', 'tail', 'tame'];
+const EDIT_FIELD_KEYS = ['color', 'ear', 'neuter', 'managed', 'feeder', 'pet', 'age', 'sex', 'body', 'tail', 'tame'];
 // 受け付けの内容に合わせる項目(取り直した時)
-const SERVER_KEYS = ['area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason'];
-const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId'];
+const SERVER_KEYS = ['area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason', 'neuter'];
+const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId', 'neuter'];
 
 const $ = s => document.querySelector(s);
 const cfg = () => { try { return JSON.parse(localStorage.getItem(CFG) || '{}'); } catch { return {}; } };
@@ -65,6 +66,10 @@ const changeMarks = r => (r.changes || []).length + opsOf(r).filter(o => o.type 
 const marksHtml = r => (editMarks(r) ? '<span class="mark edit">直した</span>' : '') + (changeMarks(r) ? `<span class="mark chg">変化 ${changeMarks(r)}回</span>` : '');
 const marksText = r => [editMarks(r) ? '直した' : '', changeMarks(r) ? `変化 ${changeMarks(r)}回` : ''].filter(Boolean).join('・');
 const hasEar = r => r.ear === '右' || r.ear === '左';
+// 不妊手術(2026-10-26 1355)。空(前からの記録)= さくら耳が右か左なら「済み」、ほかは「分からない」として扱う
+const NEUTER_DONE = '済み', NEUTER_UNKNOWN = '分からない';
+const effNeuter = r => r.neuter || (hasEar(r) ? NEUTER_DONE : NEUTER_UNKNOWN);
+const neuterText = r => effNeuter(r);   // 手術済みの理由は聞かない(2026-10-26 1440)
 const fmt = t => new Date(t).toLocaleString('ja-JP');
 
 let toastTimer;
@@ -87,7 +92,7 @@ const newId = (p = '') => p + Date.now().toString(36) + Math.random().toString(3
 let wantReload = false;
 function maybeReload() {
   if (!wantReload) return;
-  const typing = Object.keys(form).length || photos.length || (document.getElementById('feature') || {}).value || saving || !document.getElementById('sheet').classList.contains('hidden');
+  const typing = formTouched() || photos.length || (document.getElementById('feature') || {}).value || saving || !document.getElementById('sheet').classList.contains('hidden');
   if (typing) return;
   const last = Number(sessionStorage.getItem('catSurvey.swReload') || 0); if (Date.now() - last < 60000) return;   // 続けて読み込み直さない(1回だけ)
   sessionStorage.setItem('catSurvey.swReload', String(Date.now())); location.reload();
@@ -191,7 +196,7 @@ const loggedIn = () => tokenValid() && !auth.pending && wasVerified(auth);   // 
 // 受け付けが「この人は使えない」と答えた時(登録されていない・止められた・カードが使えない)。ログインの印を消し、入力・一覧などの画面を出さない
 const DENY = ['not_registered', 'stopped', 'email_not_verified', 'pass_invalid', 'card_stopped', 'card_not_found'];
 let blocked = null;   // 使えない理由(画面に出す)。ログインしていない時の画面は、理由が無くても同じ(locked)
-const DENY_TEXT = { not_registered: 'このアカウントは登録されていません。研究会の担当者に登録を頼んでください。', stopped: 'このアカウントは止められています。研究会の担当者に連絡してください。',
+const DENY_TEXT = { not_registered: 'このアカウントは登録されていません。管理者に登録を頼んでください。', stopped: 'このアカウントは止められています。管理者に連絡してください。',
   unverified: '電波がなくて、登録を確かめられませんでした。電波のある所で、もう一度ログインしてください。' };
 const whoLabel = () => !auth ? '' : isCard() ? `${auth.name || 'カードの人'}(カード)` : (auth.email || 'ログイン済み');
 const configured = () => !!(CONF.GAS_URL && CONF.GOOGLE_CLIENT_ID);
@@ -232,7 +237,7 @@ function readCardFromUrl() {
   const m = /^#card=([^&]+)/.exec(location.hash || ''); if (!m) return false;
   try { history.replaceState(null, '', location.pathname + location.search); } catch { location.hash = ''; }
   let secret = ''; try { secret = decodeURIComponent(m[1]); } catch { secret = m[1]; }
-  if (!CARD_RE.test(secret)) { toast('このカードの URL は読めませんでした。研究会の担当者に連絡してください', 6000); return false; }
+  if (!CARD_RE.test(secret)) { toast('このカードの URL は読めませんでした。管理者に連絡してください', 6000); return false; }
   cardSecret = secret;
   if (window.CardKit && !loggedIn() && CardKit.needsHomeGuide()) CardKit.showHomeGuide(openCardPin); else openCardPin();   // iPhone で、ホーム画面のアプリでない所なら、番号の前に「先にホーム画面に追加」の案内
   return true;
@@ -242,12 +247,12 @@ function openCardPin() {
   if (!cardSecret) return;
   showSheet(`<div class="sheethead"><b>カードを読みました</b></div>
   <div class="sheetbody"><div class="card pinbox"><h3>暗証番号(4けた)を入れてください</h3>
-  <p class="note">研究会から伝えられた4けたの数字です。この端末で最初の1回だけ入れます(次からは、かざさなくてもログインしたままです)。</p>
+  <p class="note">管理者から伝えられた4けたの数字です。この端末で最初の1回だけ入れます(次からは、かざさなくてもログインしたままです)。</p>
   <input id="pin" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" aria-label="暗証番号 4けた" placeholder="●●●●">
   <p id="pinmsg" class="warn hidden"></p>
   <button type="button" id="pin-go" class="primary">ログイン</button>
   <button type="button" id="pin-cancel" class="wide">やめる</button>
-  <p class="note">5回続けて間違えると、このカードは使えなくなります(研究会の担当者が戻せます)。番号を忘れたときも担当者に連絡してください。</p></div></div>`);
+  <p class="note">5回続けて間違えると、このカードは使えなくなります(管理者が戻せます)。番号を忘れたときも管理者に連絡してください。</p></div></div>`);
   const msg = t => { const el = $('#pinmsg'); el.textContent = t; el.classList.toggle('hidden', !t); };
   $('#pin-cancel').onclick = () => { cardSecret = null; closeSheet(); };
   $('#pin').oninput = () => { $('#pin').value = $('#pin').value.replace(/[^0-9０-９]/g, '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).slice(0, 4); };
@@ -259,7 +264,7 @@ function openCardPin() {
     const r = await rawApi({ action: 'cardLogin', card: cardSecret, pin });
     if (!r.ok) {
       if (r.error === 'wrong_pin') { $('#pin').value = ''; return msg(`番号が違います。あと${r.remaining}回まちがえると、このカードは使えなくなります`); }
-      if (r.error === 'card_stopped') { cardSecret = null; return msg(r.locked ? '5回まちがえたので、このカードは止まりました。研究会の担当者に連絡して、番号を戻してもらってください' : errText('card_stopped')); }
+      if (r.error === 'card_stopped') { cardSecret = null; return msg(r.locked ? '5回まちがえたので、このカードは止まりました。管理者に連絡して、番号を戻してもらってください' : errText('card_stopped')); }
       return msg(errText(r.error));
     }
     cardSecret = null; blocked = null;
@@ -309,8 +314,8 @@ function renderAuth() {
   $('#cfginfo').textContent = configured() ? `受け付け: 設定済み(${CONF.GAS_URL.replace(/^https?:\/\//, '').slice(0, 40)}…)` : '受け付け: 未設定(公開の時に設定ファイルに入ります)';
 }
 
-// ---- 選び肢(受け付けの「選び肢」シートで変わる)と役割 ----
-// 受け付けが返した選び肢を端末に控え、次に開いた時から使う。受け付けが null を返した時(シートが壊れている)や、読めない時は、アプリに入っている選び肢で動く。
+// ---- 選択肢(受け付けの「選択肢」シートで変わる)と役割 ----
+// 受け付けが返した選択肢を端末に控え、次に開いた時から使う。受け付けが null を返した時(シートが壊れている)や、読めない時は、アプリに入っている選択肢で動く。
 const okList = a => Array.isArray(a) && a.length > 0 && a.length <= 60 && a.every(x => typeof x === 'string' && x.length >= 1 && x.length <= 50);
 function applyOptions(o) {
   FIELDS.forEach(f => { const b = FIELDS_BUILTIN.find(x => x[0] === f[0]); f[2] = o && okList(o[f[0]]) ? o[f[0]].slice() : b[1].slice(); });
@@ -329,8 +334,8 @@ function applyMeta(r) {
   const before = JSON.stringify([FIELDS.map(f => f[2]), PET_REASONS]);
   applyOptions(r.options); r.options ? localStorage.setItem(OPT_KEY, JSON.stringify(r.options)) : localStorage.removeItem(OPT_KEY);
   if (before !== JSON.stringify([FIELDS.map(f => f[2]), PET_REASONS])) {
-    if (formCtl && !Object.keys(form).length && $('#sheet').classList.contains('hidden')) buildForm(); else optionsDirty = true;   // 入力の途中なら、保存したあとに入れ替える
-    toast('選び肢が新しくなりました', 3000);
+    if (formCtl && !formTouched() && $('#sheet').classList.contains('hidden')) buildForm(); else optionsDirty = true;   // 入力の途中なら、保存したあとに入れ替える
+    toast('選択肢が新しくなりました', 3000);
   }
 }
 async function refreshMeta() { if (!configured() || !loggedIn() || !navigator.onLine) return; const r = await api('whoami'); applyMeta(r); }
@@ -340,9 +345,9 @@ try { applyOptions(JSON.parse(localStorage.getItem(OPT_KEY) || 'null')); } catch
 // Content-Type を text/plain にして、CORS のプリフライトを避ける。受け付けは 302 で別の URL へ飛ばすので redirect は follow。
 // 受け付けの返事にも上限を付ける(返事が来ないまま待ち続けない)。写真つきの送信は長め。時間切れでも受け付けで済んでいることがあるので、送り直しは同じ ID で送る(受け付けが二重にしない)
 const API_WAIT_MS = Number(CONF.API_WAIT_MS) > 0 ? Number(CONF.API_WAIT_MS) : 30000, API_WAIT_PHOTO_MS = Math.max(API_WAIT_MS, Number(CONF.API_WAIT_MS) > 0 ? Number(CONF.API_WAIT_MS) : 90000);   // CONF.API_WAIT_MS は試しの時だけ(公開の設定には入れない)
-// 送れなかった訳を2つに分ける(2026-10-26 0821。艦長 msg 6673):
+// 送れなかった訳を2つに分ける(2026-10-26 0821。管理者 msg 6673):
 //  電波(NET_ERR): 端末が圏外・応答がまったく無い(つながらない・返事の始まりが来ないまま時間切れ)→「電波が弱いようです。つながったら自動で送ります。」
-//  受け付け(SRV_ERR): 受け付けまでは届いたが、まともな返事でない(HTML の頁・500 など・server_error・返事の途中で止まった)→「受け付けが応えません。艦長に知らせてください。」
+//  受け付け(SRV_ERR): 受け付けまでは届いたが、まともな返事でない(HTML の頁・500 など・server_error・返事の途中で止まった)→「受け付けが応えません。管理者に知らせてください。」
 //  どちらも記録は端末に残る(送れた扱いにしない)。ブラウザは CORS の見出しの無い誤りの頁も「応答なし」(TypeError)に見せるので、その時は受け付けに軽く問い合わせて(no-cors の GET)、届くなら受け付けの側とみなす
 const NET_ERR = ['network', 'timeout'], SRV_ERR = ['bad_response', 'http_error', 'server_error', 'stalled', 'no_cors'];
 const noAnswer = e => NET_ERR.includes(e) || SRV_ERR.includes(e);
@@ -377,7 +382,7 @@ async function api(action, extra = {}, ms) {
   if (!configured()) return { ok: false, error: 'not_configured' };
   if (!tokenValid()) return { ok: false, error: 'not_logged_in' };
   // 全員の記録・管理の操作は、Google の新しい ID トークンが要る(通行証だけでは通さない)
-  const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all');
+  const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all') || (action === 'photo' && (extra.items || []).some(i => i.ownerId));   // 他の人の記録の写真も、全員の記録と同じ
   if (needId && !idValid()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? 'not_allowed' : 'id_needed' }; }
   // カードの人は通行証。Google の人は ID トークンが期限内ならそれ(通行証をまだ持っていなければ whoami で受け取る)、切れていれば通行証
   const cred = isCard() || !idValid() ? { pass: auth.pass } : { idToken: auth.idToken, ...(action === 'whoami' && !(auth.pass && auth.passExp > Date.now() + 7 * 864e5) ? { wantPass: true } : {}) };
@@ -391,22 +396,22 @@ async function api(action, extra = {}, ms) {
   return r || { ok: false, error: 'bad_response' };
 }
 // 送れない時の案内(0821)。送る時(sendNow)は WEAK_TEXT・SRV_TEXT + 端末に残っている旨。押してすぐ結果が要る操作(管理・元に戻す等)は WEAK_TEXT_TRY
-const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = '受け付けが応えません。艦長に知らせてください。';
+const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = '受け付けが応えません。管理者に知らせてください。';
 const sendErrText = e => NET_ERR.includes(e) ? WEAK_TEXT + '(記録はこの端末に残っています)' : SRV_ERR.includes(e) ? SRV_TEXT + '(記録はこの端末に残っています)' : errText(e);
 const ERR_TEXT = {
   not_configured: '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。', not_logged_in: 'Google でログインするか、ログインカードをかざして(QR を読んで)ください。',
-  stopped: 'このアカウントは止められています。研究会の担当者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
-  card_stopped: 'このカードは止まっています。研究会の担当者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。研究会の担当者に連絡してください。',
+  stopped: 'このアカウントは止められています。管理者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
+  card_stopped: 'このカードは止まっています。管理者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。管理者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
   bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '呼び名は1〜20字で入れてください。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
-  network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。研究会の担当者に登録を頼んでください。',
+  network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
-  server_not_configured: '受け付け側の設定がまだです(担当者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
+  server_not_configured: '受け付け側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
   busy: '受け付けが混んでいます。少し待ってもう一度送ってください。',
   timeout: WEAK_TEXT_TRY,
   already_done: 'この操作は、もう受け付けで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
-  deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。担当者に相談してください)。',
-  id_needed: '全員の記録・管理は、Google でもう一度ログインしてから使えます(ログインの期限が切れました)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(担当者へ連絡してください)。この端末に貯めた分は残っています。',
+  deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。管理者に相談してください)。',
+  id_needed: '全員の記録・管理は、Google でもう一度ログインしてから使えます(ログインの期限が切れました)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
 };
 const errText = e => ERR_TEXT[e] || `送れませんでした(${e || '不明'})`;
 const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = ng; r.readAsDataURL(b); });
@@ -516,7 +521,7 @@ async function sendNow(quiet) {
 // 受け付けの記録と端末の控えを合わせる(2026-10-26 0821)。読みと書きを1つの取引で行う(合わせている間に押された削除・直しを、古い形で上書きしない)。
 //  ・未送信の直し・変化・削除がある記録は上書きしない(送ってから合わせる)
 //  ・端末では未送信なのに受け付けにある記録(送った返事が電波で切れた物): 送れた扱いにし、端末で後から直した所・削除を「直し」「削除」として貯める。
-//    前はここで受け付けの形に上書きしたので、返事が切れた後に削除した猫が、取り直しで復活した(艦長 msg 6681・6683)
+//    前はここで受け付けの形に上書きしたので、返事が切れた後に削除した猫が、取り直しで復活した(管理者 msg 6681・6683)
 //  ・受け付けに無くなった自分の送信済みの記録(管理者が試しの記録をすべて消した等)は、端末からも外す。未送信の物は残す
 // 戻り値: 送る物を貯めたか
 function mergeServerRecords(list, myId) {
@@ -628,9 +633,9 @@ function distM(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// 項目の選び肢を root の中に出し、押すと st(選んだ値の入れ物)に入れる。入力・直す・状態の変化で同じ部品を使う。
+// 項目の選択肢を root の中に出し、押すと st(選んだ値の入れ物)に入れる。入力・直す・状態の変化で同じ部品を使う。
 //  keys: 出す項目 / optional: もう一度押すと外れる項目 / idp: id の前置き(同じ画面に2つ出ても id が重ならないように)
-//  current: 今の値(状態の変化の画面)。今と同じ選び肢には印を付け、押しても選ばない / onchange: 選んだ後に呼ぶ
+//  current: 今の値(状態の変化の画面)。今と同じ選択肢には印を付け、押しても選ばない / onchange: 選んだ後に呼ぶ
 function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = null, onchange = () => {} }) {
   root.innerHTML = FIELDS.filter(f => keys.includes(f[0])).map(([k, label, opts, hint]) => `<div class="card"><h3>${label}</h3>${hint ? `<p class="hint">${esc(hint)}</p>` : ''}${current ? `<p class="now">今: ${esc(current[k] || '(未入力)')}</p>` : ''}<div class="opts" data-k="${k}">${opts.map(o => `<button type="button" data-v="${esc(o)}"${current && current[k] === o ? ' class="cur"' : ''}>${esc(o)}${current && current[k] === o ? '(今)' : ''}</button>`).join('')}</div></div>`).join('');
   const petBox = root.querySelector('.opts[data-k=pet]');
@@ -638,6 +643,8 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
     <div class="opts" id="${idp}petreasons">${PET_REASONS.map(o => `<button type="button" data-r="${esc(o)}">${esc(o)}</button>`).join('')}</div>
     <input id="${idp}petother" class="petother hidden" type="text" maxlength="${PET_OTHER_MAX}" placeholder="その他の理由(短く)" aria-label="その他の理由">
     <p class="note">人の名前や住所は書かないでください。</p></div>`);
+  const neuBox = root.querySelector('.opts[data-k=neuter]');
+  const neuNow = () => st.neuter || (current && current.neuter) || '';
   const why = () => root.querySelector('.petwhy'), other = () => root.querySelector('.petother');
   const resetWhy = () => {
     delete st.petReasons; delete st.petOther;
@@ -652,6 +659,9 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
     if (optional.includes(k) && st[k] === v) { delete st[k]; b.classList.remove('sel'); } // 任意の項目: もう一度押すと外れる
     else { box.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); st[k] = v; }
     if (k === 'pet') sync();
+    if (k === 'ear' && neuBox && (v === '右' || v === '左') && st.ear === v && neuNow() !== NEUTER_DONE) {   // さくら耳が右・左なら、不妊手術は自動で「済み」(直せる)
+      st.neuter = NEUTER_DONE; neuBox.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.v === NEUTER_DONE));
+    }
     onchange();
   });
   if (why()) {
@@ -671,25 +681,35 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
   }
   return { sync };
 }
+// 入力の途中か(不妊手術の既定「分からない」だけなら、まだ何も入れていない)
+function formTouched() { return Object.keys(form).some(k => !(k === 'neuter' && form[k] === NEUTER_UNKNOWN)); }
 let formCtl;
 function buildForm() {
-  optionsDirty = false;
+  optionsDirty = false; if (!form.neuter) form.neuter = NEUTER_UNKNOWN;   // 不妊手術の既定は「分からない」
   formCtl = mountFields($('#fields'), form, { keys: FIELDS.map(f => f[0]), optional: ['pet'], idp: '', onchange: checkDup });
 }
 
 function setLocInfo(text, bad) { const el = $('#locinfo'); el.textContent = text; el.classList.toggle('bad', !!bad); }
+// 2026-10-26 1212: gpsToken。GPS を待っている間に、地図やえさ場で猫の位置を決めたら、後から来た GPS の返事では上書きしない
+let gpsToken = 0;
 function getGps() {
+  const my = ++gpsToken;
   loc = null; setLocInfo('位置: 取得中…'); checkDup(); renderSiteCands();
   if (!navigator.geolocation) return setLocInfo('位置: この端末では取得できません。「地図で場所を指定」を押してください', true);
-  navigator.geolocation.getCurrentPosition(p => setLoc(p.coords.latitude, p.coords.longitude, Math.round(p.coords.accuracy), 'GPS'),
-    () => setLocInfo('位置: 取得できませんでした。位置情報の許可を確かめるか、「地図で場所を指定」を押してください', true),
+  navigator.geolocation.getCurrentPosition(p => { if (my === gpsToken) setLoc(p.coords.latitude, p.coords.longitude, Math.round(p.coords.accuracy), 'GPS'); },
+    () => { if (my === gpsToken) setLocInfo('位置: 取得できませんでした。位置情報の許可を確かめるか、「地図で場所を指定」を押してください', true); },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 }
-function setLoc(lat, lng, acc, src) {
+// src: 'GPS' / '地図' / SITE_LOC_SRC(えさ場の位置にした。siteName = そのえさ場の名前)。記録の「位置の取り方」に残る
+const SITE_LOC_SRC = 'えさ場の位置';
+function setLoc(lat, lng, acc, src, siteName) {
+  if (src !== 'GPS') gpsToken++;
   loc = { lat, lng, acc, src }; renderSiteCands();
   if (src === 'GPS') setLocInfo(`位置: GPSで取得(誤差 約${acc}m)${acc > 50 ? '。誤差が大きめです。取り直すと良くなることがあります' : ''}`, acc > 50);
+  else if (src === SITE_LOC_SRC) setLocInfo(`位置: えさ場「${siteName || ''}」の位置にしました`);
   else setLocInfo('位置: 地図で指定しました');
   checkDup();
+  if (form.siteId) onSitePick(form.siteId); else hideSiteAsk();   // 選んでいるえさ場から100mより遠くなったら、もう一度聞く
 }
 
 let dupToken = 0;
@@ -711,28 +731,50 @@ function sitesNear(sites, ref, maxM) {
   return liveSites(sites).map(x => ({ ...x, d: Math.round(distM(ref, x)) })).filter(x => maxM == null || x.d <= maxM).sort((a, b) => a.d - b.d);
 }
 // えさ場のプルダウン(2026-10-25 2332: 色の付くボタンから替えた。1行目で「えさ場なし」をはっきり選べる)。
-//  list = 近い順の候補(d = 距離m)、none = 1行目の文字、cur = 今のえさ場ID(「(今)」の印)、empty = 候補が無い時に出す1行
-const siteOptions = (list, { none, cur, empty }) => `<option value="">${esc(none)}${cur === '' ? '(今)' : ''}</option>` +
-  (list.length ? list.map(x => `<option value="${esc(x.id)}">${esc(x.name)}${x.d != null ? `(約 ${x.d}m)` : ''}${cur === x.id ? '(今)' : ''}${x.status === 'pending' ? '・未送信' : ''}${x.retired ? '・使っていない' : ''}</option>`).join('')
-    : empty ? `<option value="" disabled>${esc(empty)}</option>` : '');
-// 入力の画面: 1行目「えさ場なし(選ばない)」が既定。その下に、今の位置から100m以内の自分のえさ場だけを近い順に出す。
-// 位置が変わったら作り直す(選んでいた物が100mの外になったら「えさ場なし」に戻して知らせる)。位置を取り直している間は、前の選び肢のまま
+// 2026-10-26 1212(管理者 msg 6738): 帰ってから入力しても選べるように、候補は「この猫の位置」から数え、100m より遠い物も全部出す。
+//  1行目「えさ場なし」→「近くのえさ場」(猫の位置から100m以内・近い順・距離つき)→ 区切り「そのほかの自分のえさ場」(残りの使っている物・近い順・距離つき)
+//  list = 候補(d = 猫の位置からの距離m。位置が無ければ null)、head = 区切りの前に出す物(今のえさ場が使えない時など)、
+//  none = 1行目の文字、cur = 今のえさ場ID(「(今)」の印)、empty = 近くに1つも無い時に出す1行
+const siteOpt = (x, cur) => `<option value="${esc(x.id)}">${esc(x.name)}${x.d != null ? `(約 ${x.d}m)` : ''}${cur === x.id ? '(今)' : ''}${x.status === 'pending' ? '・未送信' : ''}${x.retired ? '・使っていない' : ''}</option>`;
+const siteOptions = (list, { none, cur, empty, head = [] }) => {
+  const near = list.filter(x => x.d != null && x.d <= SITE_NEAR_M), rest = list.filter(x => !near.includes(x)), placed = list.some(x => x.d != null);
+  return `<option value="">${esc(none)}${cur === '' ? '(今)' : ''}</option>` + head.map(x => siteOpt(x, cur)).join('') +
+    (near.length ? `<optgroup label="近くのえさ場(猫の位置から${SITE_NEAR_M}m以内)">${near.map(x => siteOpt(x, cur)).join('')}</optgroup>` : placed && empty ? `<option value="" disabled>${esc(empty)}</option>` : '') +
+    (rest.length ? `<optgroup label="${placed ? 'そのほかの自分のえさ場' : '自分のえさ場'}">${rest.map(x => siteOpt(x, cur)).join('')}</optgroup>` : '');
+};
+// 自分の使っているえさ場を、ref(猫の位置)から近い順に・距離つきで。ref が無ければ名前の順(距離なし)
+const siteCands = (sites, ref) => ref ? sitesNear(sites, ref) : liveSites(sites).map(x => ({ ...x, d: null })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+// 入力の画面: 1行目「えさ場なし(選ばない)」が既定。どのえさ場も選べる(消した・使わないにした物だけは外す)。猫の位置が変わったら並べ直す
 let siteToken = 0;
 async function renderSiteCands() {
   const sel = $('#sitesel'), my = ++siteToken; if (!sel) return;
-  if (!loc) {
-    if (!sel.options.length) sel.innerHTML = siteOptions([], { none: 'えさ場なし(選ばない)' });
-    sel.value = form.siteId || ''; if (sel.value !== (form.siteId || '')) sel.value = '';
-    $('#sitenone').textContent = '位置が決まると、近くのえさ場が出ます。'; return;
-  }
-  let sites; try { sites = sitesNear(await allSites(), loc, SITE_NEAR_M); } catch { return; }
+  let all; try { all = await allSites(); } catch { return; }
   if (my !== siteToken) return;
-  let moved = false;
-  if (form.siteId && !sites.some(x => x.id === form.siteId)) { delete form.siteId; moved = true; }
-  sel.innerHTML = siteOptions(sites, { none: 'えさ場なし(選ばない)', empty: '近くにえさ場はありません' });
+  const list = siteCands(all, loc);
+  if (form.siteId && !list.some(x => x.id === form.siteId)) { delete form.siteId; hideSiteAsk(); }
+  sel.innerHTML = siteOptions(list, { none: 'えさ場なし(選ばない)', empty: '(猫の位置から100m以内のえさ場はありません)' });
   sel.value = form.siteId || '';
-  $('#sitenone').textContent = sites.length ? `今の位置から100m以内の、自分のえさ場です(近い順)。この猫が来ているえさ場を選んでください。` : '近くにえさ場はありません';
-  if (moved) toast('選んでいたえさ場が100mより遠くなったので、「えさ場なし」に戻しました', 5000);
+  const picked = form.siteId && list.find(x => x.id === form.siteId);
+  $('#sitenone').textContent = !list.length ? 'えさ場はまだ登録されていません。下のボタンか、下の「えさ場」の画面で登録できます(地図で場所を指定しても登録できます)。'
+    : (loc ? '猫の位置から近い順です。100m以内の物が上に、そのほかの自分のえさ場も下から選べます(家に帰ってからでも選べます)。' : '猫の位置が決まると、近い順に並びます。')
+      + (picked && picked.d != null && picked.d > SITE_NEAR_M ? `選んだえさ場は、猫の位置から約 ${picked.d}m です。` : '');
+}
+// えさ場を選んだ時: 猫の位置から100mより遠い(または猫の位置がまだ無い)なら、「猫の位置をえさ場の位置にしますか?」と聞く(はい / そのまま)
+const hideSiteAsk = () => { const b = $('#siteask'); if (b) { b.classList.add('hidden'); b.innerHTML = ''; } };
+async function onSitePick(v) {
+  hideSiteAsk();
+  if (!v) { delete form.siteId; return renderSiteCands(); }
+  form.siteId = v;
+  let x; try { x = (await allSites()).find(s => s.id === v); } catch { return; }
+  if (!x || form.siteId !== v) return;
+  const d = loc ? Math.round(distM(loc, x)) : null;
+  if (d != null && d <= SITE_NEAR_M) return renderSiteCands();
+  const box = $('#siteask');
+  box.innerHTML = `<p>${d != null ? `えさ場から 約${d}m 離れています。` : '猫の位置がまだ決まっていません。'}猫の位置をえさ場の位置にしますか?</p><div class="row"><button type="button" id="siteask-yes" class="small yes">はい</button><button type="button" id="siteask-no" class="small">そのまま</button></div>`;
+  box.classList.remove('hidden');
+  $('#siteask-yes').onclick = () => { hideSiteAsk(); setLoc(x.lat, x.lng, null, SITE_LOC_SRC, x.name); toast(`猫の位置を、えさ場「${x.name}」の位置にしました`); };
+  $('#siteask-no').onclick = () => { hideSiteAsk(); renderSiteCands(); };
+  renderSiteCands();
 }
 
 // ---- 写真の追加・削除 ----
@@ -740,7 +782,7 @@ let thumbUrls = [];
 function renderThumbs() {
   thumbUrls.forEach(u => URL.revokeObjectURL(u));
   thumbUrls = photos.map(p => URL.createObjectURL(p));
-  $('#thumbs').innerHTML = photos.map((_, i) => `<div class="th"><img src="${thumbUrls[i]}" alt="写真${i + 1}"><button type="button" data-i="${i}" aria-label="この写真を外す">✕</button></div>`).join('');
+  $('#thumbs').innerHTML = photos.map((_, i) => `<div class="th"><img src="${thumbUrls[i]}" class="zoomable" data-zoom="${i}" alt="写真${i + 1}(押すと大きく見られます)"><button type="button" data-i="${i}" aria-label="この写真を外す">✕</button></div>`).join('');
 }
 async function onPhoto(e) {
   const files = [...e.target.files]; e.target.value = '';
@@ -767,12 +809,13 @@ async function saveRecord() {
       area: '', lat: loc.lat, lng: loc.lng, acc: loc.acc, locSrc: loc.src, ...(meshCodes(loc.lat, loc.lng) || {}),   // 区域は決め打ちをやめた(えさ場と地域メッシュで表す)。メッシュは端末の計算(送信後は受け付けの値になる)
       ...form, ...(form.pet === 'あり' ? { petReasons: form.petReasons || [], petOther: form.petReasons && form.petReasons.includes('その他') ? (form.petOther || '').trim().slice(0, PET_OTHER_MAX) : '' } : { petReasons: undefined, petOther: undefined }),
       collar: form.pet === 'あり' && (form.petReasons || []).includes('首輪がある') ? 'あり' : '',   // 首輪は理由「首輪がある」だけで表す
+      neuter: form.neuter || NEUTER_UNKNOWN,
       feature: $('#feature').value.trim(), photos, status: 'pending' }]);
   } catch (e) { done(); return toast(dbErrText(e), 8000); }   // 入れた内容は消さない(もう一度押せる)
   Object.keys(form).forEach(k => delete form[k]); photos = [];   // 入れ物は作り直さない(項目の部品が同じ入れ物を持っている)
   renderThumbs(); $('#feature').value = '';
-  if (optionsDirty) buildForm(); else { document.querySelectorAll('#fields .opts button.sel').forEach(b => b.classList.remove('sel')); formCtl.sync(); }
-  renderSiteCands();
+  if (optionsDirty) buildForm(); else { document.querySelectorAll('#fields .opts button.sel').forEach(b => b.classList.remove('sel')); form.neuter = NEUTER_UNKNOWN; const nb = document.querySelector(`#fields .opts[data-k=neuter] button[data-v="${NEUTER_UNKNOWN}"]`); if (nb) nb.classList.add('sel'); formCtl.sync(); }
+  hideSiteAsk(); renderSiteCands();
   $('#dup').classList.add('hidden'); done();
   await updateBadge(); toast(configured() && loggedIn() && navigator.onLine ? '保存しました。送っています…' : '保存しました(未送信)'); window.scrollTo(0, 0); getGps(); // 次の猫のために位置を取り直す
   maybeReload();
@@ -845,15 +888,17 @@ async function renderList() {
   const rs = every.filter(r => (showGone || !isGone(r) || r.deleted) && (all ? !r.deleted || (showDeleted && auth.admin) : !r.deleted) && (all || listFilter === 'all' || (listFilter === 'pending' ? r.status === 'pending' || opsOf(r).length : r.status === listFilter))).sort((a, b) => b.time.localeCompare(a.time));
   const gone = all ? [] : every.filter(canRestore).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));   // 自分が削除した物(30日の間)
   $('#list').innerHTML = (rs.length ? rs.map(r => {
-    let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); listUrls.push(u); img = `<img src="${u}" alt="">`; }
+    let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); listUrls.push(u); img = `<img src="${u}" class="zoomable" data-zoom-id="${esc(r.id)}" alt="写真(押すと大きく見られます)">`; }
+    else if (phNeeds(r)) img = rphHtml(r, 1).replace('class="rph"', `class="rph" data-rph-count="${Number(r.photoCount)}"`);   // 他の端末の記録: 見えたら受け付けから小さい版を取る(1800)
     const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : ''), sn = siteNameOf(r.siteId, sm);
     const st = all ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
-    return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(r.color)}</b> さくら耳:${esc(r.ear)} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}${sn ? `<br><span class="sitetag">えさ場: ${esc(sn)}</span>` : ''}<br>
+    return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(r.color)}</b> さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}${sn ? `<br><span class="sitetag">えさ場: ${esc(sn)}</span>` : ''}<br>
     <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br>
     ${st} ${esc(r.feature || '')}</div></div>`; }).join('')
     : `<p>${all ? '記録はまだありません' : listFilter === 'pending' ? '未送信の記録はありません' : '記録はまだありません'}</p>`)
     + (!showGone && nGone ? `<p class="note">いなくなった猫 ${nGone}頭は出していません(上の「いなくなった猫も見る」で出せます)。</p>` : '')
     + (gone.length ? `<details class="card gonebox"><summary>削除したもの(${gone.length}件)</summary><p class="note">削除してから30日の間は、元に戻せます。</p>${gone.map(r => `<div class="item gone"><div><b>${esc(r.color)}</b> さくら耳:${esc(r.ear)} ${delMark(r)}<br><span class="note">${fmt(r.time)}</span><br><button type="button" class="small" data-restore="${esc(r.id)}">元に戻す</button></div></div>`).join('')}</details>` : '');
+  phWatch($('#list'));
 }
 
 // ---- 地図 ----
@@ -898,7 +943,7 @@ async function renderMap() {
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
   (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.circleMarker([r.lat, r.lng], isGone(r) ? { radius: 8, weight: 1, color: '#999', fillOpacity: .3, opacity: .6, className: 'catdot awaydot', fillColor: '#bbb' }
     : { radius: 10, weight: 2, color: '#fff', fillOpacity: .9, className: 'catdot', fillColor: hasEar(r) ? '#d6336c' : r.ear === 'なし' ? '#1971c2' : '#888' })
-    .bindPopup(`<b>${esc(r.color)}</b>${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
+    .bindPopup(`<b>${esc(r.color)}</b>${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
   liveSites(sites).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), title: x.name, keyboard: false })
     .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${scope === 'all' && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
@@ -907,19 +952,19 @@ async function renderMap() {
 // ---- 集計(自分の記録だけ。全員の記録に切り替えた時は全員分)----
 function tally(rs, keyFn) {
   const by = new Map();
-  rs.forEach(r => { const k = keyFn(r), a = by.get(k) || { n: 0, ear: 0, no: 0, unk: 0, pet: 0, gone: 0 }; if (isGone(r)) { a.gone++; by.set(k, a); return; } a.n++; if (hasEar(r)) a.ear++; else if (r.ear === 'なし') a.no++; if (r.ear === UNKNOWN_EAR) a.unk++; if (effPet(r) === 'あり') a.pet++; by.set(k, a); });
+  rs.forEach(r => { const k = keyFn(r), a = by.get(k) || { n: 0, ear: 0, no: 0, unk: 0, done: 0, nunk: 0, pet: 0, gone: 0 }; if (isGone(r)) { a.gone++; by.set(k, a); return; } a.n++; if (hasEar(r)) a.ear++; else if (r.ear === 'なし') a.no++; if (r.ear === UNKNOWN_EAR) a.unk++; const nu = effNeuter(r); if (nu === NEUTER_DONE) a.done++; else if (nu === NEUTER_UNKNOWN) a.nunk++; if (effPet(r) === 'あり') a.pet++; by.set(k, a); });
   return by;
 }
 // 集計の表(2026-10-26 作り直し): 1行=1つのえさ場(または区画)・いちばん下に合計。見出しは「何が」を必ず入れる
-const STAT_COLS = ['今いる猫(頭)', 'さくら耳あり(頭)', 'さくら耳なし(頭)', 'さくら耳 確認できず(頭)', 'さくら耳ありの割合', '飼い猫の可能性あり(頭)', 'いなくなった(頭)'];   // 2026-10-26 0002: 今いる猫で数え、いなくなった猫は右の列だけ
+const STAT_COLS = ['今いる猫(頭)', 'さくら耳あり(頭)', 'さくら耳なし(頭)', 'さくら耳 確認できず(頭)', 'さくら耳ありの割合', '手術済み(頭)', '手術済みの割合', '飼い猫の可能性あり(頭)', 'いなくなった(頭)'];   // 2026-10-26 1355: 手術済み・その割合を足した。2026-10-26 0002: 今いる猫で数え、いなくなった猫は右の列だけ
 const NO_SITE_ROW = 'えさ場に結び付いていない猫';
 // 区画の名前: 地域メッシュ(500m)の番号 523667052 → 「区画 5236-6705-2(約500m)」
 const meshLabel = m => /^\d{9}$/.test(m) ? `区画 ${m.slice(0, 4)}-${m.slice(4, 8)}-${m.slice(8)}(約500m)` : m ? `区画 ${m}(約500m)` : '区画(位置不明)';
 function statTable(title, head, rows) {
-  const row = (name, a, cls = '') => { const judged = a.n - a.unk; return `<tr${cls ? ` class="${cls}"` : ''}><th scope="row" class="nm">${esc(name)}</th><td>${a.n}</td><td>${a.ear}</td><td>${a.no}</td><td>${a.unk}</td><td>${judged ? Math.round(a.ear / judged * 100) + '%' : '—'}</td><td>${a.pet}</td><td>${a.gone}</td></tr>`; };
-  const tot = rows.reduce((t, [, a]) => ({ n: t.n + a.n, ear: t.ear + a.ear, no: t.no + a.no, unk: t.unk + a.unk, pet: t.pet + a.pet, gone: t.gone + a.gone }), { n: 0, ear: 0, no: 0, unk: 0, pet: 0, gone: 0 });
+  const row = (name, a, cls = '') => { const judged = a.n - a.unk; return `<tr${cls ? ` class="${cls}"` : ''}><th scope="row" class="nm">${esc(name)}</th><td>${a.n}</td><td>${a.ear}</td><td>${a.no}</td><td>${a.unk}</td><td>${judged ? Math.round(a.ear / judged * 100) + '%' : '—'}</td><td>${a.done}</td><td>${a.n - a.nunk ? Math.round(a.done / (a.n - a.nunk) * 100) + '%' : '—'}</td><td>${a.pet}</td><td>${a.gone}</td></tr>`; };
+  const tot = rows.reduce((t, [, a]) => ({ n: t.n + a.n, ear: t.ear + a.ear, no: t.no + a.no, unk: t.unk + a.unk, done: t.done + a.done, nunk: t.nunk + a.nunk, pet: t.pet + a.pet, gone: t.gone + a.gone }), { n: 0, ear: 0, no: 0, unk: 0, done: 0, nunk: 0, pet: 0, gone: 0 });
   return `<div class="card"><h3>${esc(title)}</h3>${rows.length ? `<div class="statwrap"><table class="stat"><thead><tr><th scope="col" class="nm">${esc(head)}</th>${STAT_COLS.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(([k, a]) => row(k, a)).join('')}${row('合計', tot, 'total')}</tbody></table></div>
-    <p class="note">さくら耳ありの割合 = さくら耳ありの頭数 ÷(今いる猫 − さくら耳 確認できず)。確認できなかった猫は割合の計算に入れていません。いなくなった猫は「いなくなった(頭)」の列だけに数えます。</p>` : '<p>まだ記録がありません</p>'}</div>`;
+    <p class="note">さくら耳ありの割合 = さくら耳ありの頭数 ÷(今いる猫 − さくら耳 確認できず)。確認できなかった猫は割合の計算に入れていません。手術済み = 不妊手術が「済み」の猫(さくら耳が右か左の猫と、耳の印が無くても手術済みと分かった猫)。手術済みの割合 = 手術済みの頭数 ÷(今いる猫 − 手術が「分からない」猫)。いなくなった猫は「いなくなった(頭)」の列だけに数えます。</p>` : '<p>まだ記録がありません</p>'}</div>`;
 }
 async function renderStats() {
   const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? '全員' : '自分';
@@ -958,7 +1003,7 @@ async function startSiteHere(after) {
 // えさ場を登録する画面。pos = {lat,lng,acc,src}。保存後に after(site) を呼ぶ(無ければ、えさ場の画面に戻る)
 function openSiteForm(pos, after) {
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>えさ場を登録</b></div>
-  <div class="sheetbody"><div class="warn">猫がよく集まる餌場・たまり場を、自分用に登録します。出るのは自分の一覧と地図だけです(研究会で「全体を見る」役割の人は全員分を見られます)。<br>名前は短く。人の名前や住所は書かないでください。</div>
+  <div class="sheetbody"><div class="warn">猫がよく集まる餌場・たまり場を、自分用に登録します。出るのは自分の一覧と地図だけです(管理者が「全体を見る」役割にした人は全員分を見られます)。<br>名前は短く。人の名前や住所は書かないでください。</div>
   <div class="card"><p class="note" id="sf-loc">位置: ${pos.src === 'GPS' ? `GPSで取得(誤差 約${pos.acc}m)` : pos.src === '地図' ? '地図で指定しました' : esc(pos.src || '')}　メッシュ ${esc((meshCodes(pos.lat, pos.lng) || {}).mesh500 || '')}</p>
   <label class="fl">名前<input id="sf-name" type="text" maxlength="${SITE_NAME_MAX}" placeholder="例: 公園の東の入口"></label>
   <label class="fl">メモ(任意)<input id="sf-memo" type="text" maxlength="${SITE_MEMO_MAX}" placeholder="例: 朝に餌をあげる人が来る"></label></div>
@@ -1010,32 +1055,230 @@ async function setSiteRetired(id, retired) {
 }
 // ---- 詳しい画面・間違いを直す・状態が変わった ----
 // 画面全体にかぶせる「シート」(#sheet)。閉じると一覧・地図を描き直す。
-const LABELS = { color: '毛色・模様', ear: 'さくら耳', managed: '地域猫として世話', feeder: '餌をあげている人', age: '年齢のめやす', sex: '性別', body: '体の様子', tail: '尻尾', tame: '人への慣れ', siteId: 'えさ場' };
+const LABELS = { color: '毛色・模様', ear: 'さくら耳', neuter: '不妊手術', managed: '地域猫として世話', feeder: '餌をあげている人', age: '年齢のめやす', sex: '性別', body: '体の様子', tail: '尻尾', tame: '人への慣れ', siteId: 'えさ場' };
 let sheetUrls = [], sheetBusy = false, sheetId = null;
 const fmtShort = t => { const d = new Date(t); return isNaN(d) ? String(t || '') : d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
 const mine = r => r.mine !== false && (!r.recorderId || !auth || !auth.recorderId || r.recorderId === auth.recorderId);   // 自分の記録か(分からない時は受け付けが確かめる)
 function showSheet(html) { const el = $('#sheet'); sheetUrls.forEach(u => URL.revokeObjectURL(u)); sheetUrls = []; el.innerHTML = html; el.classList.remove('hidden'); el.scrollTop = 0; document.body.classList.add('noscroll'); }
 function closeSheet() {
   const el = $('#sheet'); sheetId = null; el.classList.add('hidden'); el.innerHTML = ''; sheetUrls.forEach(u => URL.revokeObjectURL(u)); sheetUrls = []; document.body.classList.remove('noscroll');
-  renderActiveTab(); if (optionsDirty && !Object.keys(form).length) buildForm();
+  renderActiveTab(); if (optionsDirty && !formTouched()) buildForm();
   maybeReload();
 }
+// ---- 他の端末で記録した写真を、受け付けから取る(2026-10-26 1800・管理者 msg 6763)----
+// 端末に写真が無い記録(別のスマホで記録した自分の記録・管理者の全員の記録)だけ。見てよいかは受け付けが毎回確かめる(ファイルIDは受け取らない)。
+// 小さい版(長辺320px・一覧と記録の画面)は見えた分だけ、6枚ずつまとめて取る。大きい版(長辺1600px まで)は拡大した時だけ。
+// 取った写真は別の入れ物(catSurveyPhotos)に置き、次からは通信なしで出す。上限(PH_MAX_BYTES・PH_MAX_ITEMS)を超えたら、使った時が古い物から消す。
+const PH_DB = 'catSurveyPhotos', PH_STORE = 'photos', PH_SMALL = 320, PH_BATCH = 6, PH_MAX_BYTES = 40 * 1024 * 1024, PH_MAX_ITEMS = 600, PH_LARGE_WAIT_MS = 30000;
+const PH_FAIL = '写真を読み込めません';
+let phDbp = null;
+function phDb() {
+  if (!phDbp) {
+    phDbp = new Promise((ok, ng) => {
+      let q; try { q = indexedDB.open(PH_DB, 1); } catch (e) { return ng(e); }
+      q.onupgradeneeded = () => { const st = q.result.createObjectStore(PH_STORE, { keyPath: 'k' }); st.createIndex('at', 'at'); };
+      q.onsuccess = () => { const db = q.result; db.onversionchange = () => { db.close(); phDbp = null; }; ok(db); };
+      q.onerror = () => ng(q.error || new Error('photo db')); q.onblocked = () => ng(new Error('photo db blocked'));
+    });
+    phDbp.catch(() => { phDbp = null; });
+  }
+  return phDbp;
+}
+const phTx = (mode, fn) => phDb().then(db => new Promise((ok, ng) => { const t = db.transaction(PH_STORE, mode), r = fn(t.objectStore(PH_STORE)); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(t.error); }));
+const phMaxItems = () => { const n = Number(localStorage.getItem('catSurvey.phMaxItems')); return n > 0 ? n : PH_MAX_ITEMS; };   // 試し用に上限を小さくできる(ふだんは使わない)
+// 誰の記録か: 全員の記録の中の他の人の物だけ ownerId を付ける(自分の物は付けない=受け付けがログインから決める)
+const phRef = r => ({ id: String(r.id), owner: scope === 'all' && r.mine === false && r.recorderId ? String(r.recorderId) : '' });
+const phKey = (ref, n, size) => [auth && auth.recorderId || '', ref.owner, ref.id, n, size].join('|');   // ログインした人ごとに分ける(同じ端末で別の人がログインしても、前の人の控えは出ない)
+const phNeeds = r => !(r.photos && r.photos.length) && Number(r.photoCount) > 0 && r.status !== 'pending';
+async function phGet(k) {
+  try { const e = await phTx('readonly', st => st.get(k)); if (!e) return null; phTx('readwrite', st => st.put({ ...e, at: Date.now() })).catch(() => {}); return e.blob; } catch { return null; }
+}
+async function phPut(k, blob) {
+  try {
+    await phTx('readwrite', st => st.put({ k, blob, size: blob.size, at: Date.now() }));
+    const all = (await phTx('readonly', st => st.getAll())) || [], max = phMaxItems();
+    let total = all.reduce((a, e) => a + (e.size || 0), 0), n = all.length; const old = [];
+    for (const e of all.sort((a, b) => a.at - b.at)) { if (total <= PH_MAX_BYTES && n <= max) break; if (e.k === k) continue; old.push(e.k); total -= e.size || 0; n--; }
+    if (old.length) await phTx('readwrite', st => { old.forEach(x => st.delete(x)); });
+  } catch { /* 置けなくても、今回は出せる */ }
+}
+const b64Blob = d => { const t = atob(d), a = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) a[i] = t.charCodeAt(i); return new Blob([a], { type: 'image/jpeg' }); };
+async function phShrink(blob, side) {   // 受け付けが縮小版を作れなかった時(元の写真が来た時)だけ、端末で縮める
+  try {
+    const bm = await createImageBitmap(blob); if (Math.max(bm.width, bm.height) <= side) return blob;
+    const s = side / Math.max(bm.width, bm.height), c = document.createElement('canvas'); c.width = Math.round(bm.width * s); c.height = Math.round(bm.height * s);
+    c.getContext('2d').drawImage(bm, 0, 0, c.width, c.height);
+    return await new Promise(ok => c.toBlob(b => ok(b || blob), 'image/jpeg', 0.8));
+  } catch { return blob; }
+}
+const phItem = (ref, n) => ({ recordId: ref.id, n, ...(ref.owner ? { ownerId: ref.owner } : {}) });
+const phWait = new Map(); let phTimer = null;
+function phSmall(ref, n) {
+  const k = phKey(ref, n, 's');
+  return phGet(k).then(b => b || new Promise((ok, ng) => {
+    if (!phWait.has(k)) phWait.set(k, { item: phItem(ref, n), cbs: [] });
+    phWait.get(k).cbs.push({ ok, ng }); if (!phTimer) phTimer = setTimeout(phFlush, 50);
+  }));
+}
+async function phFlush() {
+  phTimer = null; const all = [...phWait.entries()]; phWait.clear();
+  for (let i = 0; i < all.length; i += PH_BATCH) {
+    const part = all.slice(i, i + PH_BATCH); let res;
+    try { res = await api('photo', { items: part.map(([, v]) => v.item), size: 'small' }); } catch { res = { ok: false, error: 'network' }; }
+    await Promise.all(part.map(async ([k, v], j) => {
+      const it = res && res.ok && Array.isArray(res.items) ? res.items[j] : null;
+      if (!it || !it.ok || !it.data) return v.cbs.forEach(c => c.ng(new Error(it ? it.error : res && res.error || 'bad_response')));
+      const b = it.scaled ? b64Blob(it.data) : await phShrink(b64Blob(it.data), PH_SMALL);
+      await phPut(k, b); v.cbs.forEach(c => c.ok(b));
+    }));
+  }
+}
+async function phLarge(ref, n) {
+  const k = phKey(ref, n, 'l'), hit = await phGet(k); if (hit) return hit;
+  const res = await api('photo', { items: [phItem(ref, n)], size: 'large' }, PH_LARGE_WAIT_MS), it = res && res.ok && Array.isArray(res.items) ? res.items[0] : null;
+  if (!it || !it.ok || !it.data) throw new Error(it ? it.error : res && res.error || 'bad_response');
+  const b = b64Blob(it.data); await phPut(k, b); return b;
+}
+// 受け付けの写真の小さな絵の置き場(<span class="rph" data-rph-id data-rph-owner data-rph-n>)を埋める。見えた物だけ取る
+let phObs = null;
+function phFill(el) {
+  const ref = { id: el.dataset.rphId, owner: el.dataset.rphOwner || '' }, n = Number(el.dataset.rphN) || 1;
+  el.classList.remove('err'); el.classList.add('loading'); el.innerHTML = '<span class="rphmsg">写真を読み込み中…</span>';
+  phSmall(ref, n).then(b => {
+    const u = URL.createObjectURL(b); (el.closest('#sheet') ? sheetUrls : listUrls).push(u);
+    el.classList.remove('loading'); el.innerHTML = `<img src="${u}" class="zoomable" data-rph-zoom="${n}" alt="写真${n}(押すと大きく見られます)" role="button" tabindex="0">`;
+  }).catch(() => {
+    el.classList.remove('loading'); el.classList.add('err');
+    el.innerHTML = `<span class="rphmsg">${PH_FAIL}</span><button type="button" class="small rphretry" data-rph-retry="1">再読み込み</button>`;
+  });
+}
+function phWatch(root) {
+  const els = [...root.querySelectorAll('.rph[data-rph-id]:not(.watched)')]; if (!els.length) return;
+  if (typeof IntersectionObserver !== 'function') return els.forEach(el => { el.classList.add('watched'); phFill(el); });
+  if (!phObs) phObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { phObs.unobserve(e.target); phFill(e.target); } }), { rootMargin: '200px 0px' });
+  els.forEach(el => { el.classList.add('watched'); phObs.observe(el); });
+}
+const rphHtml = (r, n) => { const ref = phRef(r); return `<span class="rph" data-rph-id="${esc(ref.id)}" data-rph-owner="${esc(ref.owner)}" data-rph-n="${n}"><span class="rphmsg">写真</span></span>`; };
+// 受け付けの写真を拡大で見る(押した写真から。前後の写真も、送った時に読み込む)
+function openRemoteViewer(ref, count, start) { openViewer(Array.from({ length: count }, (_, i) => () => phLarge(ref, i + 1)), start); }
+// 小さな絵の「再読み込み」・押して拡大(一覧・記録を見る画面の共通)。押した物を扱ったら true
+function phClick(e) {
+  const rb = e.target.closest('[data-rph-retry]'); if (rb) { e.stopPropagation(); phFill(rb.closest('.rph')); return true; }
+  const zi = e.target.closest('img[data-rph-zoom]'); if (!zi) return false;
+  const box = zi.closest('.rph'), ref = { id: box.dataset.rphId, owner: box.dataset.rphOwner || '' }, cnt = Number(box.dataset.rphCount) || Number((zi.closest('[data-rph-total]') || {}).dataset?.rphTotal) || 1;
+  e.stopPropagation(); openRemoteViewer(ref, cnt, Number(zi.dataset.rphZoom) - 1); return true;
+}
+
+// ---- 写真を大きく見る(2026-10-26 1355・管理者 msg 6754)----
+// 端末の中にある写真(撮った時に長辺1600pxに縮めて位置情報を消した物)は、そのまま出す(通信は使わない)。
+// 端末に無い写真(他の端末で記録した物)は、受け付けから大きい版を取って出す(1800。上の phLarge・取った物は端末に控える)。
+// 2本指で広げる・ダブルタップで拡大/元に戻す・広げている時は1本指で動かす・広げていない時は左右にすべらせて次/前の写真。
+// ×・背景を押す・戻るボタン(端末の)・Esc で閉じる。←→ キーでも送れる
+let viewer = null;
+function openViewer(blobs, start) {
+  const list = (blobs || []).filter(Boolean); if (!list.length) return;
+  if (viewer) closeViewer(true);
+  const el = $('#viewer'), urls = list.map(b => typeof b === 'function' ? null : URL.createObjectURL(b));
+  viewer = { el, urls, src: list, i: Math.max(0, Math.min(start || 0, list.length - 1)), s: 1, x: 0, y: 0, pts: new Map(), g: null, lastTap: 0 };
+  el.innerHTML = `<div class="vwbar"><span class="vwcount" aria-live="polite"></span><button type="button" class="vwclose" aria-label="閉じる">✕</button></div>
+    <div class="vwstage"><img class="vwimg" alt=""><div class="vwload">読み込み中…</div></div>
+    ${list.length > 1 ? '<button type="button" class="vwnav vwprev" aria-label="前の写真">‹</button><button type="button" class="vwnav vwnext" aria-label="次の写真">›</button>' : ''}
+    <p class="vwhint">2本指で広げる・ダブルタップで拡大${list.length > 1 ? '・左右にすべらせて次の写真' : ''}・✕ か まわりを押すと閉じます</p>`;
+  el.classList.remove('hidden'); document.body.classList.add('noscroll');
+  try { history.pushState({ viewer: 1 }, ''); viewer.pushed = true; } catch { /* 戻るボタンで閉じられないだけ */ }
+  el.querySelector('.vwclose').onclick = () => closeViewer();
+  if (list.length > 1) { el.querySelector('.vwprev').onclick = () => viewerGo(-1); el.querySelector('.vwnext').onclick = () => viewerGo(1); }
+  const stage = el.querySelector('.vwstage');
+  stage.onpointerdown = viewerDown; stage.onpointermove = viewerMove; stage.onpointerup = stage.onpointercancel = viewerUp;
+  viewerShow();
+  el.querySelector('.vwclose').focus();
+}
+function viewerShow() {
+  const v = viewer, img = v.el.querySelector('.vwimg'), load = v.el.querySelector('.vwload');
+  v.s = 1; v.x = 0; v.y = 0; viewerApply();
+  load.classList.remove('hidden'); load.textContent = '読み込み中…'; img.classList.add('loading');
+  img.onload = () => { load.classList.add('hidden'); img.classList.remove('loading'); };
+  img.onerror = () => { load.textContent = 'この写真は開けませんでした'; };
+  img.alt = `写真${v.i + 1}`;
+  if (v.urls[v.i]) img.src = v.urls[v.i];
+  else {   // 受け付けから取る(1800)。取っている間に別の写真へ移ったら、出さない
+    const i = v.i; img.removeAttribute('src'); load.textContent = '読み込み中…';
+    v.src[i]().then(b => { if (viewer !== v) return; v.urls[i] = URL.createObjectURL(b); if (v.i === i) img.src = v.urls[i]; })
+      .catch(() => { if (viewer !== v || v.i !== i) return; load.innerHTML = `${PH_FAIL}<br><button type="button" class="small vwretry">再読み込み</button>`; const rb = load.querySelector('.vwretry'); rb.onpointerdown = rb.onpointerup = rb.onpointermove = e => e.stopPropagation(); rb.onclick = e => { e.stopPropagation(); viewerShow(); }; });   // 押しても「まわりを押した」(閉じる)にしない
+  }
+  v.el.querySelector('.vwcount').textContent = v.urls.length > 1 ? `${v.i + 1} / ${v.urls.length}` : '';
+  if (v.urls.length > 1) { v.el.querySelector('.vwprev').disabled = v.i === 0; v.el.querySelector('.vwnext').disabled = v.i === v.urls.length - 1; }
+}
+function viewerGo(d) { const v = viewer; if (!v) return; const n = v.i + d; if (n < 0 || n >= v.urls.length) return; v.i = n; viewerShow(); }
+function viewerApply() { const v = viewer, img = v.el.querySelector('.vwimg'); img.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.s})`; v.el.classList.toggle('zoomed', v.s > 1.01); }
+function viewerZoomAt(s, cx, cy) {   // 画面の (cx, cy) の所を動かさずに、倍率を s にする
+  const v = viewer, r = v.el.querySelector('.vwstage').getBoundingClientRect(), ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+  s = Math.max(1, Math.min(5, s)); v.x = ox - (ox - v.x) * s / v.s; v.y = oy - (oy - v.y) * s / v.s; v.s = s;
+  if (s <= 1.01) { v.s = 1; v.x = 0; v.y = 0; }
+  viewerApply();
+}
+function viewerDown(e) {
+  const v = viewer; if (!v) return; e.preventDefault();
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 無くても動く */ }
+  v.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const p = [...v.pts.values()];
+  if (p.length === 2) v.g = { kind: 'pinch', d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: v.s, moved: true };
+  else if (p.length === 1) v.g = { kind: 'one', sx: e.clientX, sy: e.clientY, x: v.x, y: v.y, moved: false, onImg: e.target.classList.contains('vwimg') };
+}
+function viewerMove(e) {
+  const v = viewer; if (!v || !v.pts.has(e.pointerId)) return;
+  v.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const p = [...v.pts.values()], g = v.g; if (!g) return;
+  if (g.kind === 'pinch' && p.length >= 2) { const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); viewerZoomAt(g.s * d / g.d, (p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2); return; }
+  if (g.kind !== 'one') return;
+  const dx = e.clientX - g.sx, dy = e.clientY - g.sy; if (Math.abs(dx) > 8 || Math.abs(dy) > 8) g.moved = true;
+  if (v.s > 1) { v.x = g.x + dx; v.y = g.y + dy; viewerApply(); }   // 広げている時は動かす
+  else if (v.urls.length > 1) { v.x = dx; viewerApply(); }        // 広げていない時は、すべらせている分だけずらして見せる
+}
+function viewerUp(e) {
+  const v = viewer; if (!v) return;
+  const g = v.g; v.pts.delete(e.pointerId);
+  if (v.pts.size) { if (g && g.kind === 'pinch') v.g = { kind: 'none' }; return; }   // 2本指の片方を離した: 残りの指では何もしない
+  v.g = null; if (!g || g.kind !== 'one') return;
+  const dx = e.clientX - g.sx;
+  if (v.s <= 1 && g.moved) { if (dx < -50 && v.i < v.urls.length - 1) return viewerGo(1); if (dx > 50 && v.i > 0) return viewerGo(-1); v.x = 0; viewerApply(); return; }
+  if (g.moved) return;
+  const now = Date.now();
+  if (g.onImg && now - v.lastTap < 320) { v.lastTap = 0; viewerZoomAt(v.s > 1 ? 1 : 2.5, e.clientX, e.clientY); return; }   // ダブルタップ
+  v.lastTap = now;
+  if (!g.onImg && v.s <= 1) closeViewer();   // 写真のまわり(背景)を押した
+}
+function closeViewer(quiet) {
+  const v = viewer; if (!v) return; viewer = null;
+  v.el.classList.add('hidden'); v.el.innerHTML = ''; v.urls.forEach(u => u && URL.revokeObjectURL(u));
+  if ($('#sheet').classList.contains('hidden')) document.body.classList.remove('noscroll');
+  if (v.pushed && !quiet && history.state && history.state.viewer) { v.skipPop = true; history.back(); }
+}
+addEventListener('popstate', () => { if (viewer) { viewer.pushed = false; closeViewer(true); } });   // 端末の「戻る」で閉じる(画面は移らない)
+addEventListener('keydown', e => { if (!viewer) return; if (e.key === 'Escape') closeViewer(); else if (e.key === 'ArrowRight') viewerGo(1); else if (e.key === 'ArrowLeft') viewerGo(-1); });
+
 const rowLine = (label, v) => v ? `<div class="line2"><span class="lbl">${esc(label)}</span><span>${esc(v)}</span></div>` : '';
 
 async function openDetail(id) {
   const r = await recById(id); if (!r) return; sheetId = id;
   const sm = new Map((await viewSites()).map(x => [x.id, x])), all = scope === 'all';
-  let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); sheetUrls.push(u); img = `<img class="dphoto" src="${u}" alt="写真">`; }
+  let img = ''; if (r.photos && r.photos[0]) {   // 2026-10-26 1355: 押すと大きく見られる(2枚目からは小さな絵を並べる)
+    const us = r.photos.map(p => { const u = URL.createObjectURL(p); sheetUrls.push(u); return u; });
+    img = `<img class="dphoto zoomable" src="${us[0]}" data-zoom="0" alt="写真1(押すと大きく見られます)" role="button" tabindex="0">` + (us.length > 1 ? `<div class="dthumbs">${us.map((u, i) => `<img src="${u}" class="zoomable" data-zoom="${i}" alt="写真${i + 1}(押すと大きく見られます)" role="button" tabindex="0">`).join('')}</div>` : '') + '<p class="note">写真を押すと、大きく見られます。</p>';
+  } else if (phNeeds(r)) {   // 他の端末で記録した写真: 受け付けから取る(1800)
+    const cnt = Number(r.photoCount);
+    img = `<div class="dthumbs rthumbs" data-rph-total="${cnt}">${Array.from({ length: cnt }, (_, i) => rphHtml(r, i + 1)).join('')}</div><p class="note">この記録の写真は、受け付けから読み込みます(通信を使います。一度見た写真は、次から通信なしで出ます)。押すと、大きく見られます。</p>`;
+  }
   const ops = opsOf(r), pendingChanges = ops.filter(o => o.type === 'change'), pendingEdits = ops.filter(o => o.type === 'edit').length;
   const chItems = (items, wait) => items.map(i => `<div class="chg-line">${esc(i.label)}: ${esc(i.from || '(未入力)')} → <b>${esc(i.to || '(なし)')}</b>${wait ? ' <span class="st">(送信待ち)</span>' : ''}</div>`).join('');
   const hist = [...(r.changes || []).map(e => `<div class="chg"><div class="note">${fmtShort(e.time)}</div>${chItems(e.items, false)}</div>`),
-    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(また見かけた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
+    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(また見かけた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
   const own = mine(r), unsent = r.status !== 'sent', admin = !!(auth && auth.admin && !isCard());
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>記録の詳しい内容</b></div>
   <div class="sheetbody">
   <div class="card">${img}<h3>${esc(r.color)}　さくら耳: ${esc(r.ear)} ${marksHtml(r)}</h3>
     ${isGone(r) ? `<p class="warn away">${esc(goneText(r))}。一覧と地図は、ふだん出しません(「いなくなった猫も見る」で出ます)。</p>` : ''}
-    ${rowLine('記録した日時', fmt(r.time))}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
+    ${rowLine('記録した日時', fmt(r.time))}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
     ${rowLine('写真', r.photos && r.photos.length ? r.photos.length + '枚' : r.photoCount ? r.photoCount + '枚(受け付け側)' : '')}
     ${all && !own ? '' : `<div class="line2"><span class="lbl">送信</span><span class="st ${unsent ? '' : 'sent'}">${unsent ? '未送信' : '送信済み'}</span></div>`}</div>
   <div class="card"><h3>これまでの変化(${hist.length}回)</h3>${hist.length ? hist.join('') : '<p class="note">状態の変化はまだ記録されていません。</p>'}
@@ -1049,6 +1292,8 @@ async function openDetail(id) {
     : '<p class="warn">この記録は別の人の物なので、直せません。</p>'}
   </div>`);
   $('#s-back').onclick = closeSheet;
+  $('#sheet').querySelectorAll('img[data-zoom]').forEach(im => { im.onclick = () => openViewer(r.photos, +im.dataset.zoom); im.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); im.click(); } }; });
+  const rt = $('#sheet').querySelector('.rthumbs'); if (rt) { rt.onclick = phClick; rt.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('img[data-rph-zoom]')) { e.preventDefault(); e.target.click(); } }; phWatch(rt); }
   if (own && !r.deleted) { $('#s-edit').onclick = () => openEdit(id); $('#s-change').onclick = () => openChange(id); $('#s-del').onclick = e => busy(e.currentTarget, () => deleteRecord(id), '削除しています…'); }
   if ($('#s-undel')) $('#s-undel').onclick = e => busy(e.currentTarget, () => restoreRecord(id, own ? '' : r.recorderId), '戻しています…');
 }
@@ -1107,15 +1352,16 @@ async function openEdit(id) {
   const r = await getRecord(id); if (!r) return;
   const st = {}; EDIT_FIELD_KEYS.forEach(k => { if (r[k]) st[k] = r[k]; });
   st.petReasons = [...(r.petReasons || [])]; st.petOther = r.petOther || ''; st.siteId = r.siteId || '';
-  const sites = await allSites(), here = sitesNear(sites, r), curSite = sites.find(x => x.id === r.siteId);
+  st.neuter = effNeuter(r);   // 空の古い記録は、今の数え方の値を選んだ形で出す(変えなければ送らない)
+  const sites = await allSites(), here = siteCands(sites, r), curSite = sites.find(x => x.id === r.siteId);
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>間違いを直す</b></div>
   <div class="sheetbody"><div class="warn">入力をまちがえた所だけ直してください。この記録がそのまま書き換わり、シートに「直した日時」が残ります。<br>写真と場所は、ここでは直せません。猫の状態が変わったときは、「状態が変わった」を使ってください。</div>
-  <div class="card"><h3>えさ場</h3><p class="hint">この猫が来ているえさ場(自分のえさ場だけ。この記録の場所から近い順)</p><select id="e-site" class="sitesel" aria-label="えさ場"></select></div>
+  <div class="card"><h3>えさ場</h3><p class="hint">この猫が来ているえさ場(自分のえさ場だけ。この記録の場所から近い順。100mより遠いえさ場も下の「そのほかの自分のえさ場」から選べます)</p><select id="e-site" class="sitesel" aria-label="えさ場"></select></div>
   <div id="e-fields"></div>
   <div class="card"><h3>目立つ特徴(任意)</h3><textarea id="e-feature" rows="2"></textarea></div>
   <button type="button" id="e-save" class="primary">この内容に直す</button>
   <button type="button" id="e-cancel" class="wide">やめる</button></div>`);
-  const eSel = $('#e-site'); eSel.innerHTML = siteOptions(curSite && curSite.retired && !curSite.deleted ? [{ ...curSite, d: Math.round(distM(r, curSite)) }, ...here] : here, { none: 'えさ場なし(外す)' });
+  const eSel = $('#e-site'); eSel.innerHTML = siteOptions(here, { none: 'えさ場なし(外す)', head: curSite && curSite.retired && !curSite.deleted ? [{ ...curSite, d: Math.round(distM(r, curSite)) }] : [] });
   eSel.value = st.siteId; if (eSel.value !== st.siteId) eSel.value = '';   // 削除したえさ場などで候補に無い時は「えさ場なし」
   eSel.onchange = () => { st.siteId = eSel.value; };
   mountFields($('#e-fields'), st, { keys: EDIT_FIELD_KEYS, optional: ['pet'], idp: 'e-' });
@@ -1126,7 +1372,8 @@ async function openEdit(id) {
     const miss = FIELDS.filter(f => REQUIRED.includes(f[0]) && !st[f[0]]).map(f => f[1]);
     if (miss.length) return toast('まだ選んでいない項目があります:\n' + miss.join('、'), 5000);
     const fields = {}, feature = $('#e-feature').value.trim();
-    EDIT_FIELD_KEYS.forEach(k => { const nv = st[k] ?? ''; if (nv !== (r[k] ?? '')) fields[k] = nv; });
+    EDIT_FIELD_KEYS.forEach(k => { const nv = st[k] ?? ''; if (nv !== (k === 'neuter' ? effNeuter(r) : r[k] ?? '')) fields[k] = nv; });
+    if ('neuter' in fields || ('ear' in fields && !r.neuter)) fields.neuter = st.neuter;   // 前の記録で不妊手術が空のままさくら耳を直した時も、画面に出ていた値をはっきり送る
     if ((st.siteId || '') !== (r.siteId || '')) fields.siteId = st.siteId || '';
     if (feature !== (r.feature || '')) fields.feature = feature;
     const reasons = st.pet === 'あり' ? [...(st.petReasons || [])] : [], other = reasons.includes('その他') ? (st.petOther || '').trim().slice(0, PET_OTHER_MAX) : '';
@@ -1148,12 +1395,12 @@ async function openEdit(id) {
 const getPos = () => new Promise(ok => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }) : ok(null));
 async function openChange(id) {
   const r = await getRecord(id); if (!r || r.status !== 'sent') return;
-  const st = {}, cur = {}; CHANGE_ITEMS.forEach(k => { cur[k] = r[k] || ''; });
+  const st = {}, cur = {}; CHANGE_ITEMS.forEach(k => { cur[k] = r[k] || ''; }); cur.neuter = effNeuter(r);
   const sites = await allSites(), sm = new Map(sites.map(x => [x.id, x])), curSite = r.siteId || '';
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>状態が変わった</b></div>
-  <div class="sheetbody"><div class="warn">変わった項目だけ選んでください。選ばなかった項目は、そのままです。<br>記録は書き換えず、「いつ・何が変わったか」を履歴に足します。日時は今の時刻が自動で入ります。<br>手術が済んだと分かったときは、「さくら耳」の右か左を選んでください。</div>
+  <div class="sheetbody"><div class="warn">変わった項目だけ選んでください。選ばなかった項目は、そのままです。<br>記録は書き換えず、「いつ・何が変わったか」を履歴に足します。日時は今の時刻が自動で入ります。<br>手術が済んだと分かったときは、「不妊手術」の「済み」を選んでください(さくら耳が付いていれば、さくら耳の右か左も)。</div>
   <div id="c-fields"></div>
-  <div class="card"><h3>えさ場</h3><p class="now">今: ${esc(curSite ? siteNameOf(curSite, sm) : 'えさ場なし')}</p><p class="hint">えさ場が変わった時だけ選び直してください(自分のえさ場だけ。この記録の場所から近い順)</p><select id="c-site" class="sitesel" aria-label="えさ場"></select></div>
+  <div class="card"><h3>えさ場</h3><p class="now">今: ${esc(curSite ? siteNameOf(curSite, sm) : 'えさ場なし')}</p><p class="hint">えさ場が変わった時だけ選び直してください(自分のえさ場だけ。この記録の場所から近い順。100mより遠いえさ場も下の「そのほかの自分のえさ場」から選べます)</p><select id="c-site" class="sitesel" aria-label="えさ場"></select></div>
   <div class="card" id="c-gonecard"><h3>いる/いない</h3><p class="now">今: ${esc(isGone(r) ? goneText(r) : 'いる')}</p>
     ${isGone(r) ? `<label class="line chk"><input type="checkbox" id="c-back"><span>また見かけた(「いる」に戻す)</span></label>`
     : `<p class="hint">見かけなくなった・保護された など、この場所にいなくなった時だけ。記録は消えません(入力の間違いは「削除」の方です)</p><label class="line chk"><input type="checkbox" id="c-gone"><span>いなくなった</span></label>
@@ -1164,8 +1411,8 @@ async function openChange(id) {
   <button type="button" id="c-save" class="primary">この変化を記録する</button>
   <button type="button" id="c-cancel" class="wide">やめる</button></div>`);
   mountFields($('#c-fields'), st, { keys: CHANGE_ITEMS, optional: CHANGE_ITEMS, idp: 'c-', current: cur });
-  const cSel = $('#c-site'), cList = sitesNear(sites, r), curLive = !curSite || cList.some(x => x.id === curSite);
-  cSel.innerHTML = siteOptions(curLive ? cList : [{ id: curSite, name: siteNameOf(curSite, sm), d: null }, ...cList], { none: 'えさ場なし(外す)', cur: curSite });
+  const cSel = $('#c-site'), cList = siteCands(sites, r), curLive = !curSite || cList.some(x => x.id === curSite);
+  cSel.innerHTML = siteOptions(cList, { none: 'えさ場なし(外す)', cur: curSite, head: curLive ? [] : [{ id: curSite, name: siteNameOf(curSite, sm), d: null }] });
   cSel.value = curSite;   // 今のえさ場が選ばれた形で始まる。違う物を選んだ時だけ「変わった」
   cSel.onchange = () => { if (cSel.value === curSite) delete st.siteId; else st.siteId = cSel.value; };
   $('#s-back').onclick = $('#c-cancel').onclick = () => openDetail(id);
@@ -1210,7 +1457,7 @@ const ROLE_OPTIONS = sel => ['', '全体を見る', '管理者'].map(r => `<opti
 let adminData = null, adminShow = new Set();   // adminShow: メールを全部見せている人の鍵
 async function renderAdmin() {
   const box = $('#admin'); if (!box) return;
-  if (!(loggedIn() && auth.admin && !isCard())) { box.innerHTML = '<div class="card"><p class="note">この画面は、研究会で「管理者」の役割になっている Google アカウントの人だけが使えます。</p></div>'; return; }
+  if (!(loggedIn() && auth.admin && !isCard())) { box.innerHTML = '<div class="card"><p class="note">この画面は、「管理者」の役割になっている Google アカウントの人だけが使えます。</p></div>'; return; }
   if (!navigator.onLine) { box.innerHTML = '<div class="card"><p class="warn">電波がありません。管理の画面は電波がある所で使えます。</p></div>'; return; }
   box.innerHTML = '<div class="card"><p class="note">読み込んでいます…</p></div>';
   const r = await api('adminList'); if (!r.ok) { box.innerHTML = `<div class="card"><p class="warn">${esc(errText(r.error))}</p></div>`; if (r.error === 'not_allowed') { auth.admin = false; saveAuth(); renderAuth(); } return; }
@@ -1234,7 +1481,7 @@ async function renderAdmin() {
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
     <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}
     <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
-    <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選び肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
+    <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
       <button type="button" id="ad-wipe" class="wide danger">試しの記録をすべて消す…</button></div>`;
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
 }
@@ -1244,7 +1491,7 @@ async function openWipe() {
   let pend = 0; try { pend = (await allRecords()).filter(r => r.status === 'pending' && !r.deleted).length + (await allSites()).filter(x => x.status === 'pending' && !x.deleted).length; } catch { /* 数えられない時は 0 */ }
   showSheet(`<div class="sheethead"><b>試しの記録をすべて消す(1/2)</b></div><div class="sheetbody"><div class="card">
     <p><b>全員の</b>猫の記録・状態の変化・えさ場を消し、写真をドライブのごみ箱へ入れます。</p>
-    <p class="note">消えるもの: シートの「記録」「変化」「えさ場」の2行目から下(見出しの行は残ります)・写真のフォルダの中の写真(フォルダは残ります)。<br>残るもの: 「入力者」(登録とカード)・「設定」・「選び肢」・「通行証」(ログインはそのまま)・「管理の記録」。</p>
+    <p class="note">消えるもの: シートの「記録」「変化」「えさ場」の2行目から下(見出しの行は残ります)・写真のフォルダの中の写真(フォルダは残ります)。<br>残るもの: 「入力者」(登録とカード)・「設定」・「選択肢」・「通行証」(ログインはそのまま)・「管理の記録」。</p>
     ${pend ? `<p class="warn">この端末に、未送信の記録が ${pend} 件あります(まだ受け付けへ届いていません)。次の画面で、捨てるか残すかを選べます。</p>` : ''}
     <p class="warn">元には戻せません。本番の記録が入っていないことを確かめてから進んでください。</p>
     <button type="button" id="wipe-go" class="wide danger">わかった。次へ</button><button type="button" id="wipe-cancel" class="wide">やめる</button></div></div>`);
@@ -1325,7 +1572,7 @@ async function adminClick(b, e) {
   if (act === 'reissue') return openPinForm({ title: `${label} のカードを作り直す`, note: '前のカードは使えなくなります(記録はつながります)。新しいカードの暗証番号(数字4つ)を入れてください。', button: '作り直す(QR を出す)',
     onsubmit: async pin => { const r = await adminApi('adminCardReissue', { key, pin }); if (!r.ok) return toast(errText(r.error), 5000); showCardResult({ secret: r.secret, name: r.recorder.name, pin, fresh: false }); } });
 }
-// 一覧の「役割」の選び肢を変えた時
+// 一覧の「役割」の選択肢を変えた時
 async function onAdminChange(e) {
   const sel = e.target.closest('select[data-act=role]'), card = e.target.closest('.person'); if (!sel || !card || !adminData) return;
   const key = card.dataset.key, x = adminData.recorders.find(p => p.key === key); if (!x) return;
@@ -1351,7 +1598,7 @@ function showCardResult({ secret, name, pin, fresh }) {
   <div class="warn noprint">この画面を閉じると、このカードの合言葉は<b>二度と出ません</b>。印刷か NFC の書き込みを済ませてから閉じてください。失くした時は「カードを作り直す」で新しいカードにします。</div>
   <div class="card printcard"><div class="pc-title">のら猫 頭数調査 ログインカード</div><div class="pc-name">${esc(name)}</div>
     <canvas id="qr" class="qr" aria-label="ログイン用の QR コード"></canvas>
-    <p class="pc-note">スマホのカメラでこの QR コードを読むと、調査のアプリが開きます。はじめの1回だけ、研究会から伝えられた4けたの暗証番号を入れてください。<br>このカードは他の人に渡さないでください。</p></div>
+    <p class="pc-note">スマホのカメラでこの QR コードを読むと、調査のアプリが開きます。はじめの1回だけ、管理者から伝えられた4けたの暗証番号を入れてください。<br>このカードは他の人に渡さないでください。</p></div>
   <div class="card noprint"><p class="note">暗証番号 <b>${esc(pin)}</b> は、この人に口頭などで伝えてください(カードには書かないでください)。</p>
     <button type="button" id="cr-print" class="wide">印刷する(紙のカード)</button>
     ${nfc ? '<button type="button" id="cr-nfc" class="wide">NFC タグに書き込む(タグをスマホの裏に当てる)</button>' : '<p class="note">NFC タグへの書き込みは Android の Chrome でこの画面を開いた時にできます。iPhone では、無料の「NFC Tools」アプリで下の URL を書き込みます(手順書)。</p>'}
@@ -1415,7 +1662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-here').onclick = () => locateMe(false);
   $('#scopebar').onclick = e => { const b = e.target.closest('button[data-scope]'); if (b) busy(b, () => setScope(b.dataset.scope), b.textContent); };
   $('#showdel').onchange = e => { showDeleted = e.target.checked; setScope('all'); };   // 管理者の「削除済みも見る」
-  $('#sitesel').onchange = e => { const v = e.target.value; if (v) form.siteId = v; else delete form.siteId; };
+  $('#sitesel').onchange = e => onSitePick(e.target.value);
   $('#btn-site-new').onclick = () => {
     if (!loc) return toast('位置が決まってから押してください', 4000);
     openSiteForm({ lat: loc.lat, lng: loc.lng, acc: loc.acc, src: loc.src === 'GPS' ? 'GPS' : '地図' }, async site => { form.siteId = site.id; await renderSiteCands(); });
@@ -1429,12 +1676,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     else if (a === 'map') viewSites().then(ss => { const x = ss.find(y => y.id === id); if (x) { mapFocus = { lat: x.lat, lng: x.lng }; showTab('map'); } });
   };
   $('#photo-cam').onchange = $('#photo-pick').onchange = onPhoto;
-  $('#thumbs').onclick = e => { const b = e.target.closest('button'); if (!b) return; photos.splice(+b.dataset.i, 1); renderThumbs(); };
+  $('#thumbs').onclick = e => { const im = e.target.closest('img[data-zoom]'); if (im) return openViewer(photos, +im.dataset.zoom); const b = e.target.closest('button'); if (!b) return; photos.splice(+b.dataset.i, 1); renderThumbs(); };
   $('#btn-save').onclick = saveRecord;
   document.querySelectorAll('#listfilter button').forEach(b => b.onclick = () => { listFilter = b.dataset.f; renderList(); });
   document.querySelectorAll('.showgone').forEach(c => c.onchange = () => { showGone = c.checked; renderActiveTab(); });
   $('#list').onclick = e => {
     const rb = e.target.closest('button[data-restore]'); if (rb) return busy(rb, () => restoreRecord(rb.dataset.restore), '戻しています…');
+    if (phClick(e)) return;   // 受け付けの写真の再読み込み・拡大(1800)
+    const zi = e.target.closest('img[data-zoom-id]'); if (zi) return recById(zi.dataset.zoomId).then(r => r && r.photos && r.photos.length && openViewer(r.photos, 0));   // 一覧の小さな絵: 押すと大きく(記録は開かない)
     const it = e.target.closest('.item[data-id]'); if (it) openDetail(it.dataset.id);
   };
   $('#list').onkeydown = e => { if (e.key !== 'Enter' && e.key !== ' ') return; const it = e.target.closest('.item'); if (it) { e.preventDefault(); openDetail(it.dataset.id); } };
@@ -1448,7 +1697,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !autoP && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
   updateBadge();
-  refreshMeta();   // 開いた時に、選び肢と役割を取り直す(次に開いた時から新しい選び肢が出る)
+  refreshMeta();   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
   syncQuiet(); // 開いた時に、未送信があって電波があれば送る
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     // サービスワーカーが新しい版に替わったら、古い画面(古い app.js)を1回だけ読み込み直す(入力の途中なら、保存して空になってから)。初めて入った時(前の控えが無い)は読み込み直さない

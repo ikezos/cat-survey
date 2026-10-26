@@ -34,14 +34,14 @@
     <h3>Google でログイン</h3>
     <p id="blockmsg" class="warn block hidden" role="alert"></p>
     <p id="blockpending" class="note hidden"></p>
-    <p class="note">登録された方だけが使えます。研究会で登録した Google アカウントでログインしてください。</p>
+    <p class="note">登録された方だけが使えます。管理者が登録した Google アカウントでログインしてください。</p>
     <div id="gsi-btn"></div>
     <p id="loginmsg" class="note"></p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
     <div id="cardlogin" class="cardlogin">
       <h3>ログインカードでログイン</h3>
       <div id="scanbox-btn" class="scanbtnbox"><button type="button" id="btn-scan" class="primary bigbtn">📷 カードの QR を読む</button></div>
-      <p class="note">研究会から受け取った<b>ログインカード</b>をお持ちの方は、上のボタンでカードの <b>QR コード</b>を読んでください(カメラを使います)。暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。<br><b>iPhone の方は、先に「ホーム画面に追加」をして、ホーム画面のアプリを開いてから</b>読んでください(<a href="help.html#login">手順</a>)。カードをスマホの裏に<b>かざす</b>(NFC)方法もあります。</p>
+      <p class="note">管理者から受け取った<b>ログインカード</b>をお持ちの方は、上のボタンでカードの <b>QR コード</b>を読んでください(カメラを使います)。暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。<br><b>iPhone の方は、先に「ホーム画面に追加」をして、ホーム画面のアプリを開いてから</b>読んでください(<a href="help.html#login">手順</a>)。カードをスマホの裏に<b>かざす</b>(NFC)方法もあります。</p>
     </div>
   </div>
   <div class="auto card">
@@ -54,8 +54,10 @@
   <div class="card" id="sitecard">
     <h3>えさ場(任意)</h3>
     <select id="sitesel" class="sitesel" aria-label="えさ場"><option value="">えさ場なし(選ばない)</option></select>
+    <div id="siteask" class="siteask hidden" role="alert"></div>
     <p id="sitenone" class="note"></p>
     <button type="button" id="btn-site-new" class="small">この場所を新しいえさ場に登録</button>
+    <p class="note">家に帰ってから入力する時は、上の「地図で場所を指定」で猫がいた場所を押すと、そこから近いえさ場が上に出ます。遠いえさ場を選んでも、猫の位置をえさ場の位置にできます。</p>
   </div>
   <div id="fields"></div>
   <div class="card">
@@ -101,6 +103,7 @@
     <p class="note">猫がよく集まる餌場・たまり場を登録しておくと、入力の時に近くのえさ場を選んで、猫をまとめられます。登録は自分用で、一覧と地図に出るのは自分の分だけです。</p>
     <button type="button" id="btn-site-here" class="primary">今の位置でえさ場を登録</button>
     <button type="button" id="btn-site-pick" class="wide">地図で場所を指定して登録</button>
+    <p class="note"><b>その場にいなくても登録できます。</b>家などからは「地図で場所を指定して登録」を押し、地図でえさ場の場所を押してください。</p>
   </div>
   <div id="sitelist"></div>
 </section>
@@ -119,7 +122,7 @@
   </div>
   <div class="card" id="feedback">
     <h3>ご意見を送る</h3>
-    <p class="note">使いにくい所・選び肢の希望などを教えてください(選び肢は、担当者がシートで変えられます)。個人の名前や住所は書かないでください。</p>
+    <p class="note">使いにくい所・選択肢の希望などを教えてください(選択肢は、管理者がシートで変えられます)。個人の名前や住所は書かないでください。</p>
     <a class="linkbtn" id="fb-mail" href="mailto:support@ikezos.com?subject=%E5%9C%B0%E5%9F%9F%E7%8C%AB%E9%A0%AD%E6%95%B0%E8%AA%BF%E6%9F%BB%E3%82%A2%E3%83%97%E3%83%AA%E3%81%B8%E3%81%AE%E3%81%94%E6%84%8F%E8%A6%8B">メールで送る(support@ikezos.com)</a>
     <a class="linkbtn" id="fb-gh" href="https://github.com/ikezos/cat-survey/issues" target="_blank" rel="noopener">GitHub の Issues で送る</a>
   </div>
@@ -136,6 +139,7 @@
 </section>
 </main>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
+<div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
 <script src="lib/leaflet.js"></script>
 <script src="lib/qr.js"></script>
 <script src="lib/jsQR.js"></script>
