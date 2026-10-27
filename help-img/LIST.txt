@@ -11,7 +11,9 @@
 10-scope-all.png
 11-stats-all.png
 12-settings.png
-35-tabs.png
+58-home-admin.png
+57-home.png
+60-bug.png
 13-record-top.png
 14-record-color.png
 15-record-ear.png
@@ -25,6 +27,7 @@
 22-record-photo.png
 23-list-sent.png
 24-list-pending.png
+59-home-pending.png
 25-detail.png
 26-edit.png
 27-change.png
@@ -39,6 +42,10 @@
 46-change-gone.png
 47-list-gone.png
 48-stats-gone.png
+51-stats-neuter.png
+50-record-neuter.png
+55-photo-other-list.png
+56-photo-cant-load.png
 33-card-pin.png
 34-card-loggedin.png
 40-admin-showdeleted.png

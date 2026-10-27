@@ -1,5 +1,5 @@
 'use strict';
-// のら猫 頭数調査 — 保存は端末の IndexedDB。Google でログインした人と、ログインカード(2026-10-25 追加)でログインした人が、受け付け(Apps Script)へ送れる。
+// まちねこ帳(20261027-1051 に名前を変えた)— 保存は端末の IndexedDB。Google でログインした人と、ログインカード(2026-10-25 追加)でログインした人が、受け付け(Apps Script)へ送れる。
 // ログインカード: カードの URL(…/#card=<合言葉>)で開くと、# の後ろをすぐ URL から消し(履歴に残さない)、4けたの暗証番号を聞く。受け付けが返す「通行証」を端末に持ち、次からはそれで照らす(カードも番号も要らない)。
 // 合言葉は変数に持つだけで、端末にも保存しない。管理の画面(役割「管理者」の Google の人だけ)で、カードの発行(QR を端末の中で作る)・Google の人の登録ができる。
 const DB_NAME = 'catSurvey', STORE = 'records', SITES = 'sites', OPT_KEY = 'catSurvey.options', OLD_KEY = 'catSurvey.records', CFG = 'catSurvey.config', AUTH_KEY = 'catSurvey.auth';
@@ -18,7 +18,8 @@ function meshCodes(lat, lng) {
   return { mesh3: m3, mesh500: m3 + d500, mesh250: m3 + d500 + d250 };
 }
 const FIELDS = [
-  ['color', '毛色・模様', ['茶トラ', 'キジトラ', 'サバトラ', '黒', '白', '三毛', 'サビ', 'ハチワレ', '茶白', 'キジ白', 'サバ白', 'ポインテッド', 'その他'], 'ポインテッド=顔・耳・足・尻尾だけ色が濃い猫'],
+  ['color', '毛色・模様', ['キジトラ', 'キジ白', '黒白', '黒', '三毛', '茶トラ', '茶白', 'サバトラ', 'サバ白', 'サビ', '白', '灰色(グレー)', '灰白', 'シャム系', 'その他'], '当てはまるものを1つ。「その他」は下の欄に毛色を書いてください'],   // 2026-10-27 coat-list(管理者 msg 6914)
+  ['hairLen', '毛の長さ', ['短毛', '長毛', '分からない']],   // 2026-10-27 coat-list(管理者 msg 6922)。既定は「分からない」。選択肢シートでは変えない
   ['ear', 'さくら耳', ['右', '左', 'なし', '確認できず'], '耳の先が桜の花びらの形に切ってある印(不妊手術が済んだ猫)。どちらの耳か選んでください'],
   ['neuter', '不妊手術', ['済み', 'まだ', '分からない'], 'さくら耳が右か左なら自動で「済み」になります(直せます)。耳の印が無くても、手術済みと分かっていれば「済み」を選んでください'],
   ['managed', '地域猫として世話されているか', ['されている', 'いない', '不明']],
@@ -45,14 +46,16 @@ const UNKNOWN_EAR = '確認できず';
 const MAX_PHOTOS = 3, MAX_SIDE = 1600;
 // 受け付けへ送る項目(入力者IDは送らない。受け付けがログインから決める)
 // 送った後に「状態が変わった」として足せる項目(受け付けの CHANGE_FIELDS と同じ)
-const CHANGE_ITEMS = ['ear', 'neuter', 'managed', 'feeder', 'body', 'pet'];   // + えさ場の付け替え(siteId)
+const CHANGE_ITEMS = ['ear', 'neuter', 'hairLen', 'managed', 'feeder', 'body', 'pet'];   // + えさ場の付け替え(siteId)
 // 「間違いを直す」で直せる項目(位置・日時・写真は直せない)
-const EDIT_FIELD_KEYS = ['color', 'ear', 'neuter', 'managed', 'feeder', 'pet', 'age', 'sex', 'body', 'tail', 'tame'];
+const EDIT_FIELD_KEYS = ['color', 'hairLen', 'ear', 'neuter', 'managed', 'feeder', 'pet', 'age', 'sex', 'body', 'tail', 'tame'];
 // 受け付けの内容に合わせる項目(取り直した時)
-const SERVER_KEYS = ['area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason', 'neuter'];
-const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId', 'neuter'];
+const SERVER_KEYS = ['area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason', 'neuter', 'hairLen'];
+const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId', 'neuter', 'hairLen'];
 
 const $ = s => document.querySelector(s);
+// 20261027-1050c: v26 で足した画面の部品は、古い index.html(公開直後の HTTP の控え)には無い。無い時は、画面に出ない仮の部品を返して飛ばす(起動の段の残りのボタンが止まらないように)
+const $opt = s => document.querySelector(s) || document.createElement('div');
 const cfg = () => { try { return JSON.parse(localStorage.getItem(CFG) || '{}'); } catch { return {}; } };
 const saveCfg = p => localStorage.setItem(CFG, JSON.stringify({ ...cfg(), ...p }));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,7 +72,66 @@ const hasEar = r => r.ear === '右' || r.ear === '左';
 // 不妊手術(2026-10-26 1355)。空(前からの記録)= さくら耳が右か左なら「済み」、ほかは「分からない」として扱う
 const NEUTER_DONE = '済み', NEUTER_UNKNOWN = '分からない';
 const effNeuter = r => r.neuter || (hasEar(r) ? NEUTER_DONE : NEUTER_UNKNOWN);
-const neuterText = r => effNeuter(r);   // 手術済みの理由は聞かない(2026-10-26 1440)
+const neuterText = r => effNeuter(r);
+// 毛の長さ(2026-10-27 coat-list)。空(前の記録)は「分からない」
+const HAIR_UNKNOWN = '分からない', effHair = r => (r && r.hairLen) || HAIR_UNKNOWN;
+// 毛色の「その他」(2026-10-27 coat-list)。記録は「その他:〇〇」(20字まで)。数える・比べる時は「その他」
+const COLOR_OTHER = 'その他', COLOR_OTHER_MAX = 20;
+const colorBase = c => { c = String(c || ''); return c.indexOf(COLOR_OTHER + ':') === 0 ? COLOR_OTHER : c; };
+const colorText = r => { const c = String((r && r.color) || ''); return c.indexOf(COLOR_OTHER + ':') === 0 ? `${COLOR_OTHER}(${c.slice(COLOR_OTHER.length + 1)})` : c; };
+const colorOf = st => st.color === COLOR_OTHER ? `${COLOR_OTHER}:${(st.colorOther || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, COLOR_OTHER_MAX)}` : (st.color || '');   // 画面の選び → 記録の形
+const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER + ':') === 0) { st.color = COLOR_OTHER; st.colorOther = c.slice(COLOR_OTHER.length + 1); } else if (c) st.color = c; };
+// 毛色の見本の丸(SVG を描く)。写真が用意できたら COAT_PHOTOS に「名前: 画像の場所」を足すと、その色だけ写真に替わる(丸く切り抜く)
+// 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
+// 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
+const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
+const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg" alt="" decoding="async"></picture>`;
+document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
+const COAT_SVG = (() => {
+  const W = '#fafafa', K = '#222', KI = '#8a7457', KID = '#3b2f22', CH = '#e39a4b', CHD = '#a85a1a', SA = '#a3a8ad', SAD = '#3d4247', GR = '#8e9092';
+  const stripes = c => `<path d="M-2 6 Q7 3 14 6 T30 6 M-2 13 Q7 10 14 13 T30 13 M-2 20 Q7 17 14 20 T30 20" fill="none" stroke="${c}" stroke-width="2.6"/>`;
+  const bg = c => `<rect width="28" height="28" fill="${c}"/>`, belly = `<path d="M0 16 Q14 11 28 16 V28 H0Z" fill="${W}"/>`;
+  return {
+    'キジトラ': bg(KI) + stripes(KID), 'キジ白': bg(KI) + stripes(KID) + belly, '黒白': bg(K) + belly + `<path d="M10 28 L14 15 L18 28Z" fill="${W}"/>`, '黒': bg(K),
+    '三毛': bg(W) + `<path d="M0 0 H15 Q11 9 0 12Z" fill="${CH}"/><path d="M28 0 V14 Q19 12 17 0Z" fill="${K}"/><circle cx="20" cy="22" r="5" fill="${CH}"/>`,
+    '茶トラ': bg(CH) + stripes(CHD), '茶白': bg(CH) + stripes(CHD) + belly, 'サバトラ': bg(SA) + stripes(SAD), 'サバ白': bg(SA) + stripes(SAD) + belly,
+    'サビ': bg(K) + `<circle cx="8" cy="9" r="4" fill="${CH}"/><circle cx="19" cy="7" r="2.5" fill="${CHD}"/><circle cx="17" cy="18" r="4.5" fill="${CHD}"/><circle cx="7" cy="21" r="2.5" fill="${CH}"/><circle cx="24" cy="15" r="2" fill="${CH}"/>`,
+    '白': bg(W), '灰色(グレー)': bg(GR), '灰白': bg(GR) + belly,
+    'シャム系': bg('#efe3cf') + `<path d="M0 0 H28 V6 Q14 2 0 6Z M0 22 Q14 26 28 22 V28 H0Z" fill="#4a3426"/>`,
+  };
+})();
+function coatSwatch(name, big) {
+  const ph = COAT_PHOTOS[name], g = COAT_SVG[name];
+  return `<span class="sw${g ? '' : ' unk'}${ph ? ' ph' : ''}"><svg viewBox="0 0 28 28" aria-hidden="true">${g || ''}</svg>${ph ? coatPic(ph, big) : ''}</span>`;   // 「その他」と、管理者が足した名前の分からない色は、点線の丸に「?」(style.css で描く。ボタンの文字には入れない)
+}   // 手術済みの理由は聞かない(2026-10-26 1440)
+// 毛色の見本を大きく見る(20261027-1051・管理者 msg 6948)。画面いっぱいに2列で写真と名前を並べる。押した物を選んで閉じる(表のボタンを押したのと同じ)。
+// ✕・端末の戻るボタン・Esc で閉じる(何も選ばない)
+let coatBig = null, coatSkipPop = false;   // coatSkipPop: 閉じた時の「戻る」で、画面を開き直さない(上へ戻らない)
+function openCoatBig(box) {
+  if (!box) return; if (coatBig) closeCoatBig(true);
+  const el = document.createElement('div'); el.className = 'coatbig'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', '毛色の見本');
+  const opts = [...box.querySelectorAll('button[data-v]')].map(b => b.dataset.v);
+  el.innerHTML = `<div class="cbbar"><b>毛色の見本</b><button type="button" class="cbclose" aria-label="閉じる">✕</button></div>
+    <p class="hint">当てはまるものを押すと、選んで閉じます。</p>
+    <div class="cbgrid">${opts.map(o => `<button type="button" data-v="${esc(o)}"${box.querySelector(`button.sel[data-v="${CSS.escape(o)}"]`) ? ' class="sel"' : ''}>${coatSwatch(o, true)}<span class="cn">${esc(o)}</span></button>`).join('')}</div>`;
+  document.body.appendChild(el); document.body.classList.add('noscroll');
+  coatBig = { el, box };
+  try { history.pushState(Object.assign({}, history.state, { coatbig: 1 }), ''); coatBig.pushed = true; } catch { /* 戻るボタンで閉じられないだけ */ }
+  el.querySelector('.cbclose').onclick = () => closeCoatBig();
+  el.querySelector('.cbgrid').onclick = e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    const t = box.querySelector(`button[data-v="${CSS.escape(b.dataset.v)}"]`);
+    closeCoatBig(); if (t) { t.click(); t.scrollIntoView({ block: 'nearest' }); }
+  };
+}
+function closeCoatBig(quiet) {
+  const c = coatBig; if (!c) return; coatBig = null;
+  c.el.remove(); if ($opt('#sheet').classList.contains('hidden') && !viewer) document.body.classList.remove('noscroll');
+  if (c.pushed && !quiet && history.state && history.state.coatbig) { coatSkipPop = true; history.back(); }
+}
+addEventListener('popstate', () => { if (coatBig) { coatBig.pushed = false; closeCoatBig(true); coatSkipPop = true; } });
+addEventListener('keydown', e => { if (coatBig && e.key === 'Escape') closeCoatBig(); });
+
 const fmt = t => new Date(t).toLocaleString('ja-JP');
 
 let toastTimer;
@@ -219,13 +281,13 @@ window.onGoogleCredential = async resp => {
   else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
 function denyAccess(err) {
-  auth = null; saveAuth(); blocked = err; setScope('mine', true); closeSheet();
+  auth = null; homeSrv = null; saveAuth(); blocked = err; setScope('mine', true); closeSheet();
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   renderAuth(); toast(errText(err), 7000);
 }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
-  auth = null; saveAuth(); setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
+  auth = null; homeSrv = null; saveAuth(); setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   toast('ログアウトしました。この端末の記録は残っています(次にログインした時に送ります)');
 }
@@ -295,6 +357,7 @@ function initGsi() {
     if (auth && !isCard() && !tokenValid()) google.accounts.id.prompt(); // 前に Google でログインした人は、期限が切れていれば取り直しを促す
   } catch { gsiState = 'failed'; }
 }
+let wasLoggedIn = false;
 function renderAuth() {
   const on = loggedIn(), idTail = auth && auth.recorderId ? `(ID ${auth.recorderId.slice(0, 6)})` : '';
   $('#recorder').textContent = on ? `${whoLabel()} ${idTail}` : (auth && (auth.idToken || auth.pass) ? (isCard() ? 'ログインの期限が切れました。もう一度カードをかざして(QR を読んで)ください' : 'ログインの期限が切れました。もう一度ログインしてください') : 'ログインしていません');
@@ -313,7 +376,8 @@ function renderAuth() {
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
   renderScopeBar();
-  $('#nav-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
+  $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
+  if (on && !wasLoggedIn) { wasLoggedIn = true; showTab('home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
   $('#btn-logout').classList.toggle('hidden', !auth);
   if (window.CardKit) CardKit.refresh();   // 「カードの QR を読む」の置き場所・Android の「ホーム画面に追加」の案内
@@ -333,6 +397,7 @@ function applyOptions(o) {
 let optionsDirty = false;
 function applyMeta(r) {
   if (!r || !r.ok) return;
+  takeHomeCounts(r);
   if (r.viaPass && auth && !isCard()) r = { ...r, viewAll: auth.viewAll, admin: auth.admin };   // 通行証で通った返事は役割を返さない(前の ID トークンで分かった役割を消さない)
   if (auth && auth.viewAll !== !!r.viewAll) { auth.viewAll = !!r.viewAll; saveAuth(); if (!auth.viewAll && scope === 'all') setScope('mine', true); renderScopeBar(); }
   if (auth && (auth.admin !== !!r.admin || (r.name != null && isCard() && auth.name !== r.name))) { auth.admin = !!r.admin; if (isCard() && r.name != null) auth.name = r.name; saveAuth(); renderAuth(); }
@@ -506,6 +571,7 @@ async function sendNow(quiet) {
       [...EDIT_FIELD_KEYS, 'feature', 'siteId'].forEach(k => { if (k === 'siteId' && res.siteDropped) return; if ((f[k] ?? '') !== (base[k] ?? '')) diff[k] = f[k] ?? ''; });
       if (JSON.stringify(f.petReasons || []) !== JSON.stringify(base.petReasons || []) || (f.petOther || '') !== (base.petOther || '')) { diff.petReasons = f.petReasons || []; diff.petOther = f.petOther || ''; }
       f.status = 'sent'; f.recorderId = res.recorderId; f.sentAt = now;
+      if (homeSrv && !res.duplicate && !r.deleted && !isGone(r)) { homeSrv.all++; homeSrv.mine++; }   // ホームの数: 送れた新しい記録を受け付けの数へ移す(送った後の list で取り直す)
       if (Object.keys(diff).length) f.ops = [...opsOf(f), { type: 'edit', opId: newId('o'), queuedAt: now, fields: diff }];
       if (f.deleted) f.ops = [...opsOf(f), { type: 'delete', opId: newId('o'), queuedAt: now }];
       await putAll([f]); sent++;
@@ -645,7 +711,7 @@ function distM(a, b) {
 //  keys: 出す項目 / optional: もう一度押すと外れる項目 / idp: id の前置き(同じ画面に2つ出ても id が重ならないように)
 //  current: 今の値(状態の変化の画面)。今と同じ選択肢には印を付け、押しても選ばない / onchange: 選んだ後に呼ぶ
 function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = null, onchange = () => {} }) {
-  root.innerHTML = FIELDS.filter(f => keys.includes(f[0])).map(([k, label, opts, hint]) => `<div class="card"><h3>${label}</h3>${hint ? `<p class="hint">${esc(hint)}</p>` : ''}${current ? `<p class="now">今: ${esc(current[k] || '(未入力)')}</p>` : ''}<div class="opts" data-k="${k}">${opts.map(o => `<button type="button" data-v="${esc(o)}"${current && current[k] === o ? ' class="cur"' : ''}>${esc(o)}${current && current[k] === o ? '(今)' : ''}</button>`).join('')}</div></div>`).join('');
+  root.innerHTML = FIELDS.filter(f => keys.includes(f[0])).map(([k, label, opts, hint]) => `<div class="card"><h3>${label}</h3>${hint ? `<p class="hint">${esc(hint)}</p>` : ''}${current ? `<p class="now">今: ${esc(current[k] || '(未入力)')}</p>` : ''}${k === 'color' ? '<button type="button" class="coatbigbtn">見本を大きく見る</button>' : ''}<div class="opts${k === 'color' ? ' coat' : k === 'hairLen' ? ' three' : ''}" data-k="${k}">${opts.map(o => `<button type="button" data-v="${esc(o)}"${current && current[k] === o ? ' class="cur"' : ''}>${k === 'color' ? coatSwatch(o) + '<span class="cn">' + esc(o) + '</span>' : esc(o)}${current && current[k] === o ? '(今)' : ''}</button>`).join('')}</div>${k === 'color' ? `<input id="${idp}colorother" class="petother colorother hidden" type="text" maxlength="${COLOR_OTHER_MAX}" placeholder="どんな毛色か(20字まで・必ず書く)" aria-label="その他の毛色"><div class="coatpick hidden" aria-live="polite"></div>` : ''}</div>`).join('');
   const petBox = root.querySelector('.opts[data-k=pet]');
   if (petBox) petBox.insertAdjacentHTML('afterend', `<div id="${idp}petwhy" class="petwhy hidden"><p class="hint">理由があれば選んでください(いくつでも・任意)</p>
     <div class="opts" id="${idp}petreasons">${PET_REASONS.map(o => `<button type="button" data-r="${esc(o)}">${esc(o)}</button>`).join('')}</div>
@@ -653,7 +719,14 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
     <p class="note">人の名前や住所は書かないでください。</p></div>`);
   const neuBox = root.querySelector('.opts[data-k=neuter]');
   const neuNow = () => st.neuter || (current && current.neuter) || '';
-  const why = () => root.querySelector('.petwhy'), other = () => root.querySelector('.petother');
+  const why = () => root.querySelector('.petwhy'), other = () => root.querySelector('.petwhy .petother');
+  const cOther = root.querySelector('.colorother');   // 毛色の「その他」の自由記入(その他を選んだ時だけ出す)
+  const cPick = root.querySelector('.coatpick');   // 20261027-1051: 選んだ毛色を、表の下に大きな写真で出す(合っているか一目で確かめる)
+  const syncPick = () => { if (!cPick) return; const c = st.color; cPick.classList.toggle('hidden', !c); cPick.innerHTML = c ? `${coatSwatch(c, true)}<p>選んだ毛色: <b>${esc(c)}</b></p>` : ''; };
+  const syncColor = () => { syncPick(); if (!cOther) return; const on = st.color === COLOR_OTHER; cOther.classList.toggle('hidden', !on); if (on) cOther.value = st.colorOther || ''; else delete st.colorOther; };
+  const cBig = root.querySelector('.coatbigbtn');
+  if (cBig) cBig.onclick = () => openCoatBig(root.querySelector('.opts[data-k=color]'));
+  if (cOther) cOther.oninput = () => { st.colorOther = cOther.value; };
   const resetWhy = () => {
     delete st.petReasons; delete st.petOther;
     root.querySelectorAll('.petwhy .opts button.sel').forEach(b => b.classList.remove('sel'));
@@ -667,6 +740,7 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
     if (optional.includes(k) && st[k] === v) { delete st[k]; b.classList.remove('sel'); } // 任意の項目: もう一度押すと外れる
     else { box.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)); st[k] = v; }
     if (k === 'pet') sync();
+    if (k === 'color') { syncColor(); if (st.color === COLOR_OTHER && !(st.colorOther || '').trim()) cOther.focus(); }
     if (k === 'ear' && neuBox && (v === '右' || v === '左') && st.ear === v && neuNow() !== NEUTER_DONE) {   // さくら耳が右・左なら、不妊手術は自動で「済み」(直せる)
       st.neuter = NEUTER_DONE; neuBox.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x.dataset.v === NEUTER_DONE));
     }
@@ -682,18 +756,22 @@ function mountFields(root, st, { keys, optional = ['pet'], idp = '', current = n
   }
   // 値が入っていれば、選んだ状態にする(直す画面)
   keys.forEach(k => { const b = st[k] !== undefined && root.querySelector(`.opts[data-k=${k}] button[data-v="${CSS.escape(st[k])}"]`); if (b) b.classList.add('sel'); });
+  syncColor();
   if (why() && st.pet === 'あり') {
     why().classList.remove('hidden');
     (st.petReasons || []).forEach(r => { const b = why().querySelector(`button[data-r="${CSS.escape(r)}"]`); if (b) b.classList.add('sel'); });
     if ((st.petReasons || []).includes('その他')) { other().classList.remove('hidden'); other().value = st.petOther || ''; }
   }
-  return { sync };
+  return { sync: () => { sync(); syncColor(); } };
 }
+// 毛色が「その他」なのに自由記入が空なら、その項目名を返す(入力・直すの「まだ選んでいない項目」に足す)
+const colorOtherMissing = st => st.color === COLOR_OTHER && !(st.colorOther || '').trim() ? ['毛色の「その他」の欄'] : [];
 // 入力の途中か(不妊手術の既定「分からない」だけなら、まだ何も入れていない)
-function formTouched() { return Object.keys(form).some(k => !(k === 'neuter' && form[k] === NEUTER_UNKNOWN)); }
+function formTouched() { return Object.keys(form).some(k => !(k === 'neuter' && form[k] === NEUTER_UNKNOWN) && !(k === 'hairLen' && form[k] === HAIR_UNKNOWN)); }
 let formCtl;
 function buildForm() {
   optionsDirty = false; if (!form.neuter) form.neuter = NEUTER_UNKNOWN;   // 不妊手術の既定は「分からない」
+  if (!form.hairLen) form.hairLen = HAIR_UNKNOWN;   // 毛の長さの既定も「分からない」(押し間違えても直せる)
   formCtl = mountFields($('#fields'), form, { keys: FIELDS.map(f => f[0]), optional: ['pet'], idp: '', onchange: checkDup });
 }
 
@@ -730,7 +808,7 @@ let dupToken = 0;
 async function checkDup() {
   const box = $('#dup'), my = ++dupToken;
   if (!loc || !form.color || !form.ear) return box.classList.add('hidden');
-  let near; try { near = (await allRecords()).filter(r => !r.deleted && r.color === form.color && r.ear === form.ear && distM(loc, r) <= 50); } catch { return; }
+  let near; try { near = (await allRecords()).filter(r => !r.deleted && colorBase(r.color) === form.color && r.ear === form.ear && distM(loc, r) <= 50); } catch { return; }
   if (my !== dupToken) return;
   if (!near.length) return box.classList.add('hidden');
   box.innerHTML = `⚠️ 前に記録した猫ではありませんか?<br>同じ毛色(${esc(form.color)})・さくら耳(${esc(form.ear)})の記録が、50m以内に${near.length}件あります。` +
@@ -812,7 +890,7 @@ async function saveRecord() {
   if (!loggedIn()) { renderAuth(); return toast('ログインの期限が切れました。もう一度ログインしてください(いま入れた内容は、ログインすると続けて保存できます)', 6000); }
   if (saving) return;
   if (dbNotUsable()) return toast(DB_TEXT[dbState], 8000);   // 前の画面が開いたまま等: 待たずに理由を出す
-  const miss = FIELDS.filter(f => REQUIRED.includes(f[0]) && !form[f[0]]).map(f => f[1]);
+  const miss = FIELDS.filter(f => REQUIRED.includes(f[0]) && !form[f[0]]).map(f => f[1]).concat(colorOtherMissing(form));
   if (miss.length) return toast('まだ選んでいない項目があります:\n' + miss.join('、'), 5000);
   if (!loc) return toast('位置がありません。「地図で場所を指定」を押してください', 5000);
   saving = true; const btn = $('#btn-save'), was = btn.innerHTML; btn.disabled = true; btn.textContent = '保存しています…';
@@ -823,12 +901,13 @@ async function saveRecord() {
       area: '', lat: loc.lat, lng: loc.lng, acc: loc.acc, locSrc: loc.src, ...(meshCodes(loc.lat, loc.lng) || {}),   // 区域は決め打ちをやめた(えさ場と地域メッシュで表す)。メッシュは端末の計算(送信後は受け付けの値になる)
       ...form, ...(form.pet === 'あり' ? { petReasons: form.petReasons || [], petOther: form.petReasons && form.petReasons.includes('その他') ? (form.petOther || '').trim().slice(0, PET_OTHER_MAX) : '' } : { petReasons: undefined, petOther: undefined }),
       collar: form.pet === 'あり' && (form.petReasons || []).includes('首輪がある') ? 'あり' : '',   // 首輪は理由「首輪がある」だけで表す
-      neuter: form.neuter || NEUTER_UNKNOWN,
+      neuter: form.neuter || NEUTER_UNKNOWN, hairLen: form.hairLen || HAIR_UNKNOWN,
+      color: colorOf(form), colorOther: undefined,   // 毛色の「その他」は「その他:〇〇」にして残す
       feature: $('#feature').value.trim(), photos, status: 'pending' }]);
   } catch (e) { done(); return toast(dbErrText(e), 8000); }   // 入れた内容は消さない(もう一度押せる)
   Object.keys(form).forEach(k => delete form[k]); photos = [];   // 入れ物は作り直さない(項目の部品が同じ入れ物を持っている)
   renderThumbs(); $('#feature').value = '';
-  if (optionsDirty) buildForm(); else { document.querySelectorAll('#fields .opts button.sel').forEach(b => b.classList.remove('sel')); form.neuter = NEUTER_UNKNOWN; const nb = document.querySelector(`#fields .opts[data-k=neuter] button[data-v="${NEUTER_UNKNOWN}"]`); if (nb) nb.classList.add('sel'); formCtl.sync(); }
+  if (optionsDirty) buildForm(); else { document.querySelectorAll('#fields .opts button.sel').forEach(b => b.classList.remove('sel')); form.neuter = NEUTER_UNKNOWN; form.hairLen = HAIR_UNKNOWN; [['neuter', NEUTER_UNKNOWN], ['hairLen', HAIR_UNKNOWN]].forEach(([k, v]) => { const nb = document.querySelector(`#fields .opts[data-k=${k}] button[data-v="${v}"]`); if (nb) nb.classList.add('sel'); }); formCtl.sync(); }
   hideSiteAsk(); renderSiteCands();
   $('#dup').classList.add('hidden'); done();
   await updateBadge(); toast(configured() && loggedIn() && navigator.onLine ? '保存しました。送っています…' : '保存しました(未送信)'); window.scrollTo(0, 0); getGps(); // 次の猫のために位置を取り直す
@@ -841,10 +920,23 @@ async function updateBadge() {
   try { n = (await allRecords()).reduce((t, r) => t + (r.status === 'pending' && !r.deleted ? 1 : 0) + opsOf(r).length, 0) + (await allSites()).reduce((t, x) => t + (x.status === 'pending' && !x.deleted ? 1 : 0) + (x.ops || []).length, 0); }
   catch { return; }   // 保存の入れ物が使えない時は数えない(上に案内が出ている)
   $('#pending').textContent = n ? `未送信 ${n}` : '';
+  $('#btn-send').classList.toggle('hidden', scope === 'all' || !n);
+  renderHomeCounts(n);
+}
+// ホームの数(2026-10-27 nav-a): これまでの登録(みんな・自分)・まだ送れていない記録。数え方は集計の「合計」と同じ(削除した記録と、いなくなった猫を除く)
+// 2026-10-27 nav-b: 受け付けが whoami・list の返事に数を付ける(counts: {all, mine}。数だけ)。来るまでは、自分は端末の記録から数え、みんなは「—」
+// 来たら受け付けの数に入れ替え、まだ送れていない新しい記録(受け付けにはまだ無い)の分を足して出す。送れたら1つずつ受け付けの数へ移す(送った後の list の返事で取り直す)
+let homeSrv = null;   // 受け付けの数 {all, mine}。ログアウトで消す
+const homeCountOf = rs => rs.filter(r => !r.deleted && !isGone(r)).length;
+function takeHomeCounts(r) { const c = r && r.counts; if (c && Number.isFinite(c.all) && Number.isFinite(c.mine)) { homeSrv = { all: c.all, mine: c.mine }; updateBadge(); } }
+async function renderHomeCounts(n) {
+  try { const rs = await allRecords(), add = homeCountOf(rs.filter(r => r.status === 'pending')), mine = homeSrv ? homeSrv.mine + add : homeCountOf(rs);
+    $opt('#home-today').textContent = mine; $opt('#home-all').textContent = homeSrv ? homeSrv.all + add : '—';
+    $opt('#home-pending').textContent = n || 0; $opt('#home-pending-btn').classList.toggle('zero', !n); $opt('#home-pending-btn').setAttribute('aria-label', n ? `まだ送れていない記録 ${n}件を送る` : 'すべて送れています'); } catch { /* 数えられない時は触らない */ }
 }
 function renderActiveTab() {
   const t = document.querySelector('.tab.active'); if (!t) return;
-  if (t.id === 'tab-list') renderList(); if (t.id === 'tab-map') renderMap(); if (t.id === 'tab-stats') renderStats(); if (t.id === 'tab-sites') renderSites(); if (t.id === 'tab-record') renderSiteCands(); if (t.id === 'tab-admin') renderAdmin();
+  if (t.id === 'tab-home') updateBadge(); if (t.id === 'tab-list') renderList(); if (t.id === 'tab-map') renderMap(); if (t.id === 'tab-stats') renderStats(); if (t.id === 'tab-sites') renderSites(); if (t.id === 'tab-record') renderSiteCands(); if (t.id === 'tab-admin') renderAdmin();
 }
 
 // ---- 見る範囲(自分の記録 / 全員の記録)。「全員」は受け付けの入力者シートで役割「全体を見る」になっている人だけ ----
@@ -891,27 +983,40 @@ const whoText = r => r.recorderId ? `入力者 ID ${String(r.recorderId).slice(0
 
 // ---- 一覧 ----
 let listFilter = 'all', listUrls = [];   // 2026-10-26 0002: 開いた時は「すべて」(未送信は上の件数の印と、切り替えで見る)
+// 一覧(2026-10-27 見本): えさ場ごとにまとめる(押すと開く・えさ場なしは最後)+絞り込み(さくら耳 あり/なし・飼い猫の可能性・いなくなった。件数つき)
+// 毛色の絞り込みは無い(管理者の指示)。「いなくなった」を選んだ時だけ、いなくなった猫が出る
+let listChip = 'all', listOpen = new Set(), listOpenInit = false;
+const LCHIPS = [['all', 'すべて', r => true], ['ear', 'さくら耳 あり', r => hasEar(r)], ['noear', 'さくら耳 なし', r => r.ear === 'なし'], ['pet', '飼い猫の可能性', r => effPet(r) === 'あり'], ['gone', 'いなくなった', r => isGone(r)]];
 async function renderList() {
   listUrls.forEach(u => URL.revokeObjectURL(u)); listUrls = [];
   const all = scope === 'all';
-  $('#listmine').classList.toggle('hidden', all);
-  document.querySelectorAll('#listfilter button').forEach(b => b.classList.toggle('active', b.dataset.f === listFilter));
-  document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
   const sm = new Map((await viewAllSites()).map(x => [x.id, x])), every = await viewAllRecords();
-  const nGone = every.filter(r => !r.deleted && isGone(r)).length; $('#listgone').textContent = nGone ? `(${nGone}頭)` : '';
-  const rs = every.filter(r => (showGone || !isGone(r) || r.deleted) && (all ? !r.deleted || (showDeleted && auth.admin) : !r.deleted) && (all || listFilter === 'all' || (listFilter === 'pending' ? r.status === 'pending' || opsOf(r).length : r.status === listFilter))).sort((a, b) => b.time.localeCompare(a.time));
+  const live = every.filter(r => (all ? !r.deleted || (showDeleted && auth.admin) : !r.deleted));
+  const present = live.filter(r => !isGone(r) || r.deleted);
+  const count = c => c[0] === 'gone' ? live.filter(r => !r.deleted && isGone(r)).length : present.filter(c[2]).length;
+  $opt('#lchips').innerHTML = LCHIPS.map(c => `<button type="button" class="lchip${c[0] === listChip ? ' on' : ''}" data-chip="${c[0]}" aria-pressed="${c[0] === listChip}">${c[1]}<b>${count(c)}</b></button>`).join('');
+  const cur = LCHIPS.find(c => c[0] === listChip) || LCHIPS[0];
+  const rs = (listChip === 'gone' ? live.filter(r => !r.deleted && isGone(r)) : present.filter(cur[2])).sort((a, b) => b.time.localeCompare(a.time));
+  // 自分の記録の時だけ: 送れていない記録があれば「送る」(ホームの「送る」と同じ)・取り直し(v25 までの機能を残す)
+  $('#listmine').classList.toggle('hidden', all); $opt('#listrefresh').classList.toggle('hidden', all);
+  $('#btn-send').classList.toggle('hidden', all || !/\d/.test($('#pending').textContent));
   const gone = all ? [] : every.filter(canRestore).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));   // 自分が削除した物(30日の間)
-  $('#list').innerHTML = (rs.length ? rs.map(r => {
+  const itemHtml = r => {
     let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); listUrls.push(u); img = `<img src="${u}" class="zoomable" data-zoom-id="${esc(r.id)}" alt="写真(押すと大きく見られます)">`; }
     else if (phNeeds(r)) img = rphHtml(r, 1).replace('class="rph"', `class="rph" data-rph-count="${Number(r.photoCount)}"`);   // 他の端末の記録: 見えたら受け付けから小さい版を取る(1800)
-    const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : ''), sn = siteNameOf(r.siteId, sm);
+    const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : '');
     const st = all ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
-    return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(r.color)}</b> さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}${sn ? `<br><span class="sitetag">えさ場: ${esc(sn)}</span>` : ''}<br>
+    return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''} さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}<br>
     <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br>
-    ${st} ${esc(r.feature || '')}</div></div>`; }).join('')
-    : `<p>${all ? '記録はまだありません' : listFilter === 'pending' ? '未送信の記録はありません' : '記録はまだありません'}</p>`)
-    + (!showGone && nGone ? `<p class="note">いなくなった猫 ${nGone}頭は出していません(上の「いなくなった猫も見る」で出せます)。</p>` : '')
-    + (gone.length ? `<details class="card gonebox"><summary>削除したもの(${gone.length}件)</summary><p class="note">削除してから30日の間は、元に戻せます。</p>${gone.map(r => `<div class="item gone"><div><b>${esc(r.color)}</b> さくら耳:${esc(r.ear)} ${delMark(r)}<br><span class="note">${fmt(r.time)}</span><br><button type="button" class="small" data-restore="${esc(r.id)}">元に戻す</button></div></div>`).join('')}</details>` : '');
+    ${st} ${esc(r.feature || '')}${!all && !r.deleted ? `<br><button type="button" class="small chgbtn" data-change="${esc(r.id)}"><svg class="ic sm" aria-hidden="true"><use href="#i-change"/></svg>この猫の状態を変える</button>` : ''}</div></div>`; };
+  if (!listOpenInit && rs.length) { listOpenInit = true; listOpen.add(rs[0].siteId || ''); }   // 初めて開いた時は、いちばん新しい猫のいるえさ場を開いておく(状態を変えるまでが2回で済む)
+  const groups = new Map();   // えさ場の id → 猫(えさ場が消えた/見つからない物も、その名前の組に入れる)
+  rs.forEach(r => { const k = r.siteId || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+  const keys = [...groups.keys()].sort((a, b) => a === '' ? 1 : b === '' ? -1 : siteNameOf(a, sm).localeCompare(siteNameOf(b, sm), 'ja'));
+  const gHtml = k => { const list = groups.get(k), name = k ? siteNameOf(k, sm) : 'えさ場なし';
+    return `<details class="sgroup${k ? '' : ' sgnone'}" data-gk="${esc(k)}"${listOpen.has(k) ? ' open' : ''}><summary>${k ? '<span class="siteicon sm" aria-hidden="true"></span>' : '<svg class="ic md" aria-hidden="true"><use href="#i-map"/></svg>'}<span class="sgname">${esc(name)}</span><span class="sgn">${list.length}頭</span><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg></summary><div class="sgbody">${list.map(itemHtml).join('')}</div></details>`; };
+  $('#list').innerHTML = (rs.length ? keys.map(gHtml).join('') : `<p>${listChip === 'all' ? '記録はまだありません' : '当てはまる猫はいません'}</p>`)
+    + (gone.length ? `<details class="card gonebox"><summary>削除したもの(${gone.length}件)</summary><p class="note">削除してから30日の間は、元に戻せます。</p>${gone.map(r => `<div class="item gone"><div><b>${esc(colorText(r))}</b> さくら耳:${esc(r.ear)} ${delMark(r)}<br><span class="note">${fmt(r.time)}</span><br><button type="button" class="small" data-restore="${esc(r.id)}">元に戻す</button></div></div>`).join('')}</details>` : '');
   phWatch($('#list'));
 }
 
@@ -919,7 +1024,7 @@ async function renderList() {
 let map, layer, meLayer, picking = false, pickTarget = 'cat', pickPin = null, pickCtx = null, mapAuto = false, mapFocus = null;
 // 地図で場所を選ぶ(2026-10-26 2105): 地図を押すとピンが立つ(押し直すと動く・ピンは指で動かせる)→「ここで確定」で決まる。確定するまで元の画面に戻らない
 function setPicking(on) {
-  picking = on; $('#pickmsg').classList.toggle('hidden', !on); $('#pickbtns').classList.toggle('hidden', !on); $('#pickwhat').textContent = pickTarget === 'site' ? 'えさ場にする場所' : '猫がいた場所';
+  picking = on; document.body.classList.toggle('picking', on); $('#pickmsg').classList.toggle('hidden', !on); $('#pickbtns').classList.toggle('hidden', !on); $('#pickwhat').textContent = pickTarget === 'site' ? 'えさ場にする場所' : '猫がいた場所';
   if (pickPin) { pickPin.remove(); pickPin = null; }
   $('#btn-pickok').disabled = true; $('#pickstate').textContent = 'まだ選んでいません';
   if (!on) pickCtx = null;
@@ -988,8 +1093,8 @@ async function renderMap() {
   initMap(); if (!map) return; layer.clearLayers();
   const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x]));
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
-  (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${r.color || ''}` })
-    .bindPopup(`<b>${esc(r.color)}</b>${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
+  (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${colorText(r)}` })
+    .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
   liveSites(sites).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
     .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${scope === 'all' && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
@@ -1112,7 +1217,7 @@ async function setSiteRetired(id, retired) {
 }
 // ---- 詳しい画面・間違いを直す・状態が変わった ----
 // 画面全体にかぶせる「シート」(#sheet)。閉じると一覧・地図を描き直す。
-const LABELS = { color: '毛色・模様', ear: 'さくら耳', neuter: '不妊手術', managed: '地域猫として世話', feeder: '餌をあげている人', age: '年齢のめやす', sex: '性別', body: '体の様子', tail: '尻尾', tame: '人への慣れ', siteId: 'えさ場' };
+const LABELS = { color: '毛色・模様', hairLen: '毛の長さ', ear: 'さくら耳', neuter: '不妊手術', managed: '地域猫として世話', feeder: '餌をあげている人', age: '年齢のめやす', sex: '性別', body: '体の様子', tail: '尻尾', tame: '人への慣れ', siteId: 'えさ場' };
 let sheetUrls = [], sheetBusy = false, sheetId = null;
 const fmtShort = t => { const d = new Date(t); return isNaN(d) ? String(t || '') : d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
 const mine = r => r.mine !== false && (!r.recorderId || !auth || !auth.recorderId || r.recorderId === auth.recorderId);   // 自分の記録か(分からない時は受け付けが確かめる)
@@ -1329,13 +1434,13 @@ async function openDetail(id) {
   const ops = opsOf(r), pendingChanges = ops.filter(o => o.type === 'change'), pendingEdits = ops.filter(o => o.type === 'edit').length;
   const chItems = (items, wait) => items.map(i => `<div class="chg-line">${esc(i.label)}: ${esc(i.from || '(未入力)')} → <b>${esc(i.to || '(なし)')}</b>${wait ? ' <span class="st">(送信待ち)</span>' : ''}</div>`).join('');
   const hist = [...(r.changes || []).map(e => `<div class="chg"><div class="note">${fmtShort(e.time)}</div>${chItems(e.items, false)}</div>`),
-    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(また見かけた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
+    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'hairLen' ? '毛の長さ' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(また見かけた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
   const own = mine(r), unsent = r.status !== 'sent', admin = !!(auth && auth.admin && !isCard());
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>記録の詳しい内容</b></div>
   <div class="sheetbody">
-  <div class="card">${img}<h3>${esc(r.color)}　さくら耳: ${esc(r.ear)} ${marksHtml(r)}</h3>
+  <div class="card">${img}<h3>${esc(colorText(r))}　さくら耳: ${esc(r.ear)} ${marksHtml(r)}</h3>
     ${isGone(r) ? `<p class="warn away">${esc(goneText(r))}。一覧と地図は、ふだん出しません(「いなくなった猫も見る」で出ます)。</p>` : ''}
-    ${rowLine('記録した日時', fmt(r.time))}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
+    ${rowLine('毛の長さ', effHair(r))}${rowLine('記録した日時', fmt(r.time))}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
     ${rowLine('写真', r.photos && r.photos.length ? r.photos.length + '枚' : r.photoCount ? r.photoCount + '枚(受け付け側)' : '')}
     ${all && !own ? '' : `<div class="line2"><span class="lbl">送信</span><span class="st ${unsent ? '' : 'sent'}">${unsent ? '未送信' : '送信済み'}</span></div>`}</div>
   <div class="card"><h3>これまでの変化(${hist.length}回)</h3>${hist.length ? hist.join('') : '<p class="note">状態の変化はまだ記録されていません。</p>'}
@@ -1408,6 +1513,7 @@ async function restoreSite(id, ownerId) {
 async function openEdit(id) {
   const r = await getRecord(id); if (!r) return;
   const st = {}; EDIT_FIELD_KEYS.forEach(k => { if (r[k]) st[k] = r[k]; });
+  delete st.color; splitColor(r.color, st); st.hairLen = effHair(r);   // 「その他:〇〇」は「その他」と欄の文字に分けて出す・毛の長さが空の前の記録は「分からない」
   st.petReasons = [...(r.petReasons || [])]; st.petOther = r.petOther || ''; st.siteId = r.siteId || '';
   st.neuter = effNeuter(r);   // 空の古い記録は、今の数え方の値を選んだ形で出す(変えなければ送らない)
   const sites = await allSites(), here = siteCands(sites, r), curSite = sites.find(x => x.id === r.siteId);
@@ -1426,10 +1532,10 @@ async function openEdit(id) {
   $('#s-back').onclick = $('#e-cancel').onclick = () => openDetail(id);
   $('#e-save').onclick = e => busy(e.currentTarget, async () => {
     if (sheetBusy) return;
-    const miss = FIELDS.filter(f => REQUIRED.includes(f[0]) && !st[f[0]]).map(f => f[1]);
+    const miss = FIELDS.filter(f => REQUIRED.includes(f[0]) && !st[f[0]]).map(f => f[1]).concat(colorOtherMissing(st));
     if (miss.length) return toast('まだ選んでいない項目があります:\n' + miss.join('、'), 5000);
     const fields = {}, feature = $('#e-feature').value.trim();
-    EDIT_FIELD_KEYS.forEach(k => { const nv = st[k] ?? ''; if (nv !== (k === 'neuter' ? effNeuter(r) : r[k] ?? '')) fields[k] = nv; });
+    EDIT_FIELD_KEYS.forEach(k => { const nv = k === 'color' ? colorOf(st) : st[k] ?? ''; if (nv !== (k === 'neuter' ? effNeuter(r) : k === 'hairLen' ? effHair(r) : r[k] ?? '')) fields[k] = nv; });
     if ('neuter' in fields || ('ear' in fields && !r.neuter)) fields.neuter = st.neuter;   // 前の記録で不妊手術が空のままさくら耳を直した時も、画面に出ていた値をはっきり送る
     if ((st.siteId || '') !== (r.siteId || '')) fields.siteId = st.siteId || '';
     if (feature !== (r.feature || '')) fields.feature = feature;
@@ -1452,7 +1558,7 @@ async function openEdit(id) {
 const getPos = () => new Promise(ok => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) }), () => ok(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }) : ok(null));
 async function openChange(id) {
   const r = await getRecord(id); if (!r || r.status !== 'sent') return;
-  const st = {}, cur = {}; CHANGE_ITEMS.forEach(k => { cur[k] = r[k] || ''; }); cur.neuter = effNeuter(r);
+  const st = {}, cur = {}; CHANGE_ITEMS.forEach(k => { cur[k] = r[k] || ''; }); cur.neuter = effNeuter(r); cur.hairLen = effHair(r);
   const sites = await allSites(), sm = new Map(sites.map(x => [x.id, x])), curSite = r.siteId || '';
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>状態が変わった</b></div>
   <div class="sheetbody"><div class="warn">変わった項目だけ選んでください。選ばなかった項目は、そのままです。<br>記録は書き換えず、「いつ・何が変わったか」を履歴に足します。日時は今の時刻が自動で入ります。<br>手術が済んだと分かったときは、「不妊手術」の「済み」を選んでください(さくら耳が付いていれば、さくら耳の右か左も)。</div>
@@ -1656,7 +1762,7 @@ function showCardResult({ secret, name, pin, fresh }) {
   showSheet(`<div class="sheethead noprint"><b>${fresh ? 'カードを作りました' : 'カードを作り直しました'}</b></div>
   <div class="sheetbody">
   <div class="warn noprint">この画面を閉じると、このカードの合言葉は<b>二度と出ません</b>。印刷か NFC の書き込みを済ませてから閉じてください。失くした時は「カードを作り直す」で新しいカードにします。</div>
-  <div class="card printcard"><div class="pc-title">のら猫 頭数調査 ログインカード</div><div class="pc-name">${esc(name)}</div>
+  <div class="card printcard"><div class="pc-title">まちねこ帳 ログインカード</div><div class="pc-name">${esc(name)}</div>
     <canvas id="qr" class="qr" aria-label="ログイン用の QR コード"></canvas>
     <p class="pc-note">スマホのカメラでこの QR コードを読むと、調査のアプリが開きます。はじめの1回だけ、管理者から伝えられた4けたの暗証番号を入れてください。<br>このカードは他の人に渡さないでください。</p></div>
   <div class="card noprint"><p class="note">暗証番号 <b>${esc(pin)}</b> は、この人に口頭などで伝えてください(カードには書かないでください)。</p>
@@ -1683,7 +1789,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v25';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v28';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -1873,14 +1979,27 @@ async function demo() {
   await putAll(rs); await updateBadge(); toast('見本のデータを20頭分入れました(未送信)');
 }
 
-function showTab(t) {
+// 画面の名前(上の名前)と、下の4つ以外の画面(上に「← ホーム」が出る)
+const TITLES = { home: 'まちねこ帳 <small>試用版</small>', record: '猫を記録する', list: '記録の一覧', map: '地図', sites: 'えさ場', stats: '集計', settings: '設定', admin: '管理', bug: '不具合を知らせる' };
+const MAIN_TABS = ['home', 'record', 'list', 'map'];
+// 戻る: スマホの戻るボタン・端から払う操作は、ブラウザの履歴で受ける。下の4つの間の行き来は履歴を積まず(replaceState)、戻るとホームへ。ホームから入る画面だけ積む(pushState)
+function showTab(t, fromPop) {
   if (!loggedIn() && t !== 'record') t = 'record';   // ログインしていない人は、ログインの画面(入力の欄)にしか行けない
+  if (!document.getElementById('tab-' + t)) t = 'record';   // 20261027-1050c: 古い index.html(HTTP の控え)に無い画面(ホームなど)は、入力の画面を出す(真っ白にしない)
   if (t !== 'map' && picking) setPicking(false); // 地図指定の途中で離れたら取り消す
-  if (t !== 'settings') lastScreen = t;   // 不具合の知らせの「どの画面で」の初めの選び(0607)
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  if (t !== 'settings' && t !== 'bug' && t !== 'home') lastScreen = t;   // 不具合の知らせの「どの画面で」の初めの選び(0607)
+  document.querySelectorAll('#bottomnav button').forEach(b => { const on = b.dataset.tab === t; b.classList.toggle('active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
+  $opt('#screen-title').innerHTML = TITLES[t] || t; document.title = (t === 'home' ? '' : $opt('#screen-title').textContent + ' - ') + 'まちねこ帳';
+  $opt('#btn-back').classList.toggle('hidden', MAIN_TABS.includes(t));
+  if (!fromPop) { try { const cur = history.state || { tab: 'home', d: 0 };
+    if (cur.tab === t) { /* 同じ画面 */ } else if (t === 'home') { if (cur.d > 0) history.go(-cur.d); else history.replaceState({ tab: 'home', d: 0 }, ''); }
+    else if (cur.tab !== 'home' && MAIN_TABS.includes(cur.tab) && MAIN_TABS.includes(t)) history.replaceState({ tab: t, d: cur.d }, '');   // 下の4つの間: 積まない
+    else history.pushState({ tab: t, d: cur.d + 1 }, '');   // ホームから入る・ホーム以外の画面から入る: 積む(戻るで1つ前)
+  } catch { /* 履歴が使えない時は戻る操作だけ効かない */ } }
+  window.scrollTo(0, 0);
   renderScopeBar();
-  if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') { renderAuth(); renderBugPend(); } if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
+  if (t === 'home') updateBadge(); if (t === 'bug') renderBugPend(); if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') renderAuth(); if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
   if (t === 'map') {
     renderMap();
     if (mapFocus) { initMap(); map.invalidateSize(); map.setView([mapFocus.lat, mapFocus.lng], 17, { animate: false }); mapFocus = null; mapAuto = true; }
@@ -2003,7 +2122,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   readCardFromUrl();   // カードの URL(#card=…)で開かれたら、合言葉を URL から消して、暗証番号を聞く
   window.addEventListener('hashchange', readCardFromUrl);   // 開いたままの画面で、もう一度カードをかざした(# だけ変わった)時も同じ
   $('#tab-admin').onclick = onAdminClick; $('#tab-admin').onchange = onAdminChange;
-  document.querySelectorAll('nav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  document.querySelectorAll('#bottomnav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => showTab(b.dataset.go));
+  $opt('#btn-back').onclick = () => { if (history.state && history.state.d > 0) history.back(); else showTab('home'); };
+  $opt('#home-pending-btn').onclick = e => e.currentTarget.classList.contains('zero') ? undefined : busy(e.currentTarget, () => sendPending(false), '送っています…');
+  try { history.replaceState({ tab: 'home', d: 0 }, ''); } catch { /* */ }
+  window.addEventListener('popstate', e => { if (coatSkipPop) { coatSkipPop = false; return; } const t = (e.state && e.state.tab) || 'home'; showTab(t, true); });
   $('#btn-gps').onclick = getGps;
   $('#btn-pick').onclick = () => startPick('cat', { from: loc, ok: (lat, lng) => { showTab('record'); setLoc(lat, lng, null, '地図'); }, cancel: () => showTab('record') });
   $('#btn-pickok').onclick = () => { if (!pickPin) return; const p = pickPin.getLatLng(), c = pickCtx; setPicking(false); if (c) c.ok(p.lat, p.lng); };
@@ -2027,9 +2151,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#photo-cam').onchange = $('#photo-pick').onchange = onPhoto;
   $('#thumbs').onclick = e => { const im = e.target.closest('img[data-zoom]'); if (im) return openViewer(photos, +im.dataset.zoom); const b = e.target.closest('button'); if (!b) return; photos.splice(+b.dataset.i, 1); renderThumbs(); };
   $('#btn-save').onclick = saveRecord;
-  document.querySelectorAll('#listfilter button').forEach(b => b.onclick = () => { listFilter = b.dataset.f; renderList(); });
+  $opt('#lchips').onclick = e => { const b = e.target.closest('button[data-chip]'); if (b) { listChip = b.dataset.chip; renderList(); } };
+  $('#list').addEventListener('toggle', e => { const d = e.target; if (d.classList && d.classList.contains('sgroup')) { if (d.open) listOpen.add(d.dataset.gk); else listOpen.delete(d.dataset.gk); } }, true);
   document.querySelectorAll('.showgone').forEach(c => c.onchange = () => { showGone = c.checked; renderActiveTab(); });
   $('#list').onclick = e => {
+    const cb = e.target.closest('button[data-change]'); if (cb) return openChange(cb.dataset.change);
     const rb = e.target.closest('button[data-restore]'); if (rb) return busy(rb, () => restoreRecord(rb.dataset.restore), '戻しています…');
     if (phClick(e)) return;   // 受け付けの写真の再読み込み・拡大(1800)
     const zi = e.target.closest('img[data-zoom-id]'); if (zi) return recById(zi.dataset.zoomId).then(r => r && r.photos && r.photos.length && openViewer(r.photos, 0));   // 一覧の小さな絵: 押すと大きく(記録は開かない)
@@ -2041,14 +2167,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-logout').onclick = logout;
   });
   bootStep('版の知らせ', () => {
-  $('#btn-update').onclick = doUpdate;
-  $('#appver').textContent = APP_VER.replace('cat-survey-', '');
-  $('#btn-vercheck').onclick = e => busy(e.currentTarget, () => checkUpdate(true), '確かめています…');
+  $opt('#btn-update').onclick = doUpdate;
+  $opt('#appver').textContent = APP_VER.replace('cat-survey-', '');
+  $opt('#btn-vercheck').onclick = e => busy(e.currentTarget, () => checkUpdate(true), '確かめています…');
   });
   bootStep('不具合の知らせ', () => {
-  $('#btn-bug').onclick = () => openBugForm();
-  $('#btn-bugmine').onclick = e => busy(e.currentTarget, openBugMine, '読み込んでいます…');
-  $('#autoerr').checked = autoErrOn(); $('#autoerr').onchange = e => { saveCfg({ autoErr: e.target.checked }); toast(e.target.checked ? 'アプリの誤りを自動で知らせます' : 'アプリの誤りを自動で知らせるのを止めました'); };
+  $opt('#btn-bug').onclick = () => openBugForm();
+  $opt('#btn-bugmine').onclick = e => busy(e.currentTarget, openBugMine, '読み込んでいます…');
+  $opt('#autoerr').checked = autoErrOn(); $opt('#autoerr').onchange = e => { saveCfg({ autoErr: e.target.checked }); toast(e.target.checked ? 'アプリの誤りを自動で知らせます' : 'アプリの誤りを自動で知らせるのを止めました'); };
   });
   bootStep('そのほかのボタン', () => {
   if (CONF.SHOW_DEMO || new URLSearchParams(location.search).has('demo')) $('#btn-demo').classList.remove('hidden');

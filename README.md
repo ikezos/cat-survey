@@ -1,7 +1,8 @@
-# のら猫 頭数調査
+# まちねこ帳
 
-のら猫の頭数を、調査に加わる人がスマホで記録するための画面です(GitHub Pages で公開)。
+「まちねこ帳」は、のら猫の頭数を、調査に加わる人がスマホで記録するための画面です(のら猫の頭数調査のためのアプリ。GitHub Pages で公開)。
 
+- アプリの名前は「まちねこ帳」になりました。受け付けのシート・受け付け(Google Apps Script)・ドライブのフォルダの名前は変わりません。
 - このリポジトリにあるのは画面のコードだけです。調査の記録・写真・入力した人の情報は入りません。
 - 記録はまず端末の中(IndexedDB)に保存し、登録された入力者が Google でログインすると、受け付け(Google Apps Script)へ送ります。
 - プライバシーポリシー: https://cats.ikezos.com/privacy.html
@@ -9,6 +10,7 @@
 - 地図は Leaflet 1.9.4(lib/LEAFLET-LICENSE.txt)と OpenStreetMap の地図を使っています。
 - 重なった地図の印を丸の数字にまとめる所は Leaflet.markercluster 1.5.3(MIT、lib/MARKERCLUSTER-LICENSE.txt)を使っています。
 - カードの QR の読み取りは jsQR(Apache-2.0、lib/JSQR-LICENSE.txt)を使い、端末の中だけで行います。
+- 毛色の見本の写真(img/coat/): AI で作った画像(管理者が用意)から、14色を丸く切り抜いた物です。名前の文字は入れていません。「その他」は写真なし(?の丸)です。
 - 猫は消さずに「いなくなった」と記録できます(いなくなった日と理由)。理由の選択肢は、受け付けのシート「選択肢」の「いなくなった理由」で変えられます。
 - 一覧を開いた時は「すべて」(未送信も送信済みも)が出ます。
 - 送れない時は、端末に残して1分ごとに自動で送り直します。
@@ -24,6 +26,8 @@
 - 呼び出し: cardLogin・whoami・list・photo・submit・edit・change・siteAdd・siteEdit・passRevoke・delete・restore・siteDelete・siteRestore・bugAdd・bugAuto・bugMine・admin〜(管理者だけ。adminBugList・adminBugPhoto・adminBugSet を含む)
   - `photo` は写真を渡します。見てよい人は `list` と同じ(本人・全体を見る役割の人・管理者)。ドライブのファイル ID やリンクは返しません。appsscript.json の権限は変わりません。
   - `bugAdd` の画面の写しは、写真のフォルダの中の「不具合の写し」に置きます(フォルダの ID はスクリプト プロパティ)。
+- 選択肢シートの反映: 表計算で直せば、次の呼び出しから反映します。表計算の外から直すと、反映が最大5分遅れます。
+- 公開の順: 受け付けの Code.gs が先、画面(このリポジトリ)が後です。
 
 ## 一緒に開発してくださる方へ
 

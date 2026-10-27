@@ -146,3 +146,82 @@ label.fl:has(#wipe-discard){display:flex;gap:10px;align-items:flex-start}
 #bugfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}#bugfilter .on{background:#2f6f4f;color:#fff;border-color:#2f6f4f}
 #bug-thumbs img,#bug-shots img{max-width:150px;max-height:200px;border-radius:6px;border:1px solid #ccc}
 .updmsg{background:#0b5394;color:#fff;padding:10px 14px;font-size:18px;font-weight:bold;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:12px}.updmsg p{margin:0}.updmsg .small{color:#222;font-weight:bold;flex:none}.updmsg.hidden{display:none}
+
+/* ===== 2026-10-27 新しい画面構成の見本(ホーム+下の4つ+えさ場ごとの一覧) ===== */
+.ic{width:28px;height:28px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.ic.sm{width:20px;height:20px}.ic.md{width:30px;height:30px}.ic.lg{width:40px;height:40px}.ic.xl{width:48px;height:48px}
+.note{font-size:16px;color:#555}.hint{font-size:15px}
+header{gap:8px;justify-content:flex-start;min-height:60px;padding:6px 12px}
+header h1{flex:1;font-size:20px;line-height:1.25}header h1 small{font-size:14px}
+.backbtn{display:inline-flex;align-items:center;gap:4px;min-height:56px;min-width:56px;padding:0 12px 0 8px;border:2px solid #fff;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:17px;font-weight:bold}
+.badge{font-size:16px;background:#a34a00;font-weight:bold}
+main{padding:10px 10px calc(96px + env(safe-area-inset-bottom))}
+#bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:1200;display:flex;background:#fff;border-top:1px solid #aaa;box-shadow:0 -2px 6px #0002;padding-bottom:env(safe-area-inset-bottom)}
+#bottomnav button{flex:1;min-height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-bottom:5px solid transparent;background:#fff;color:#444;font-size:16px;padding:4px 2px 2px}
+#bottomnav button.active{color:#1d4b34;font-weight:bold;border-bottom-color:#2f6f4f;background:#e6efe9}
+#bottomnav .ic{width:30px;height:30px}
+body.locked #bottomnav,body.picking #bottomnav{display:none}
+.toast{bottom:84px}
+.pickbtns{bottom:calc(14px + env(safe-area-inset-bottom))}
+/* ホーム */
+.homecount{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.hc{background:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 1px 2px #0002;display:flex;flex-direction:column;align-items:flex-start;gap:0;border:0;text-align:left;font-size:16px;color:#222;min-height:88px}
+.hcn{font-size:34px;font-weight:bold;line-height:1.15;color:#1d4b34}.hcl{font-size:16px;color:#333}
+.hcsend{border:2px solid #a34a00}.hcsend .hcn{color:#8a3b00}.hcgo{display:inline-flex;align-items:center;gap:4px;margin-top:2px;font-size:16px;font-weight:bold;color:#8a3b00}
+.hcsend.zero{border-color:#ccc}.hcsend.zero .hcn{color:#1d4b34}.hcsend.zero .hcgo{display:none}
+.hbig{display:flex;align-items:center;justify-content:center;gap:14px;width:100%;min-height:96px;border:0;border-radius:16px;background:#b3500f;color:#fff;font-size:26px;font-weight:bold;box-shadow:0 2px 4px #0003;margin-bottom:10px}
+.htiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.htile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:112px;border:2px solid #2f6f4f;border-radius:14px;background:#fff;color:#1d4b34;font-size:19px;font-weight:bold}
+.hsmall{display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px dashed #9bb;padding-top:12px}
+.hs{display:flex;align-items:center;gap:8px;min-height:60px;padding:6px 10px;border:1px solid #777;border-radius:12px;background:#fff;color:#222;font-size:17px;text-decoration:none;text-align:left;line-height:1.25}
+.hs.hidden{display:none}
+/* 一覧(えさ場ごと) */
+.lchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.lchip{display:inline-flex;align-items:center;min-height:56px;padding:6px 14px;border:2px solid #777;border-radius:28px;background:#fff;color:#222;font-size:17px}
+.lchip b{margin-left:6px;font-size:17px}
+.lchip.on{background:#2f6f4f;border-color:#2f6f4f;color:#fff;font-weight:bold}
+.lchip.on::before{content:"✓";margin-right:6px}
+details.sgroup{background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 2px #0002}
+details.sgroup>summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:64px;padding:8px 12px;cursor:pointer;font-size:18px}
+details.sgroup>summary::-webkit-details-marker{display:none}
+details.sgroup>summary .sgname{flex:1;font-weight:bold;word-break:break-all}
+details.sgroup>summary .sgn{font-size:18px;font-weight:bold;color:#1d4b34;background:#e6efe9;border-radius:14px;padding:2px 12px}
+details.sgroup>summary .ic.chev{width:26px;height:26px;transition:transform .15s}
+details.sgroup[open]>summary .ic.chev{transform:rotate(180deg)}
+details.sgroup[open]>summary{border-bottom:1px solid #ddd}
+details.sgroup .sgbody{padding:8px 8px 2px}
+.sgnone>summary .sgname{color:#444}
+.item .note{font-size:15px}
+.chgbtn{margin-top:6px;min-height:56px;gap:6px;font-size:16px;border-color:#2f6f4f;color:#1d4b34;font-weight:bold}
+.small,.wide,.tiny,.linkbtn,select,.opts button,.seg button{min-height:56px}
+.sheet .small,.site .row .small,.person .row .small{min-height:56px}
+
+/* 見本(1039): ホーム一番上の3つ。上に みんな・自分、下に まだ送れていない を横長で */
+.hcsend{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;column-gap:10px;width:100%}
+.hcsend .hcl{flex:1 1 100%}.hcsend .hcn{flex:1}
+.hcn small{font-size:16px;font-weight:bold;margin-left:3px;color:#333}.hcn{display:block}
+.hcok{display:none;font-size:18px;font-weight:bold;color:#1d4b34}
+.hcsend.zero .hcn,.hcsend.zero .hcgo{display:none}.hcsend.zero .hcok{display:block}.hcsend.zero{min-height:64px;justify-content:center;cursor:default}
+.hcsend.zero{align-items:flex-start;justify-content:flex-start}.hcsend.zero .hcok{margin-top:2px}
+/* 2026-10-27 nav-a: 大きなオレンジのボタン(保存・送る など)も、白い文字で WCAG AA(4.5)を満たす濃さに(ホームの「猫を記録する」と同じ色)*/
+.primary{background:#b3500f}
+/* 2026-10-27 coat-list: 毛色は3列×5段で全部を1画面に(1つ56px以上・文字16px)。見本の丸は SVG(写真に替えるときは img) */
+.opts.coat{grid-template-columns:repeat(3,1fr);gap:6px}
+.opts.coat button{min-height:60px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.15}
+.opts.coat .cn{font-size:16px;word-break:keep-all;overflow-wrap:anywhere}
+.sw{display:inline-block;width:24px;height:24px;border-radius:50%;overflow:hidden;border:1px solid #888;flex:none;background:#fff}
+.sw svg,.sw img{display:block;width:100%;height:100%;object-fit:cover}.sw.unk{border-style:dashed;position:relative}.sw.unk::after{content:'?';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#666}
+.opts.coat button.sel .sw{border-color:#fff;box-shadow:0 0 0 1px #fff}
+.opts.three{grid-template-columns:repeat(3,1fr)}
+.colorother{margin-top:8px}
+/* 20261027-1051: 毛色の見本の写真(管理者が用意した画像から切り抜き)。写真は描いた丸の上に重ねる。読めなかった時は写真を外して描いた丸を出す。表の丸は 44px */
+.sw{position:relative}.sw picture{position:absolute;inset:0;display:block}
+.opts.coat .sw{width:44px;height:44px}.opts.coat .sw.unk::after,.coatbig .sw.unk::after,.coatpick .sw.unk::after{font-size:22px}
+.coatbigbtn{display:block;width:100%;min-height:48px;margin:0 0 8px;border:1px solid #2f6f4f;border-radius:10px;background:#fff;color:#1d4b34;font-size:16px}
+.coatpick{display:flex;align-items:center;gap:12px;margin-top:10px;padding:8px;border:1px solid #ccc;border-radius:10px;background:#fff}
+.coatpick .sw{width:160px;height:160px;border-width:2px}.coatpick .sw.unk::after{font-size:56px}.coatpick p{margin:0;font-size:18px}
+.coatbig{position:fixed;inset:0;z-index:2500;background:#f4f1ea;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 20px}
+.cbbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;background:#f4f1ea;padding:8px 0;z-index:1;font-size:18px}
+.cbclose{min-width:48px;min-height:48px;font-size:22px;border:1px solid #888;border-radius:10px;background:#fff}
+.cbgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.cbgrid button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border:1px solid #ccc;border-radius:12px;background:#fff;font-size:18px}
+.cbgrid button.sel{border:3px solid #b3500f}.cbgrid .sw{width:150px;height:150px;max-width:100%;border-width:2px}.cbgrid .sw.unk::after{font-size:56px}

@@ -126,7 +126,7 @@
   function renderInstallHint() {
     let box = document.getElementById('installhint');
     if (!wantInstallHint()) { if (box) box.classList.add('hidden'); return; }
-    if (!box) { box = document.createElement('div'); box.id = 'installhint'; box.className = 'card installhint'; const t = document.getElementById('tab-record'); t.insertBefore(box, t.firstChild); }
+    if (!box) { box = document.createElement('div'); box.id = 'installhint'; box.className = 'card installhint'; const t = document.getElementById('tab-home') || document.getElementById('tab-record'); t.insertBefore(box, t.firstChild); }   // 1049 finish: v26 は開くとホームから(記録の画面に置くとログインの直後に見えない)
     box.classList.remove('hidden');
     box.innerHTML = `<h3>ホーム画面に追加すると、次から開きやすくなります</h3>
       ${deferred ? '<button type="button" id="ih-add" class="primary">ホーム画面に追加する</button>' : `<div class="gstep"><span class="gn">1</span>${MENU3}<p>Chrome の右上の<b>「︙」</b>を押します。</p></div><div class="gstep"><span class="gn">2</span><p><b>「ホーム画面に追加」</b>(または「アプリをインストール」)を押します。</p></div>`}
