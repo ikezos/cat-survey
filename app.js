@@ -299,6 +299,7 @@ async function reconfirm(cred, exp) {
   if (r.recorderId) auth.recorderId = r.recorderId;
   applyMeta(r); saveAuth(); reauth = null; renderAuth();
   toast('Google で確かめました', 2500);
+  photoResume();   // 20261028-0140: 確かめを待っていた写真を、そのまま出す
   const tab = document.querySelector('.tab.active');
   if (job === 'all' && auth.viewAll) await setScope('all');
   else if (job === 'admin' && tab && tab.id === 'tab-admin') renderAdmin();
@@ -327,6 +328,7 @@ function renderRelogin() {
     gsiSpot(set);
   }
   gsiSpot(document.getElementById('relogin-admin'));
+  document.querySelectorAll('.relogin-photo').forEach(gsiSpot);
 }
 // 通行証でログインしたまま、全員の記録・管理を見ている人の ID トークンが切れる前に、Google の自動のログイン(前に選んだアカウント)で静かに取り直す。
 // 選び直しの画面が出る時もあるので、全員の記録・管理を見ている時だけ・30分に1回まで(何度も出して嫌われると、Google が自動のログインをしばらく止めるため)
@@ -1367,14 +1369,32 @@ async function phLarge(ref, n) {
 let phObs = null;
 function phFill(el) {
   const ref = { id: el.dataset.rphId, owner: el.dataset.rphOwner || '' }, n = Number(el.dataset.rphN) || 1;
-  el.classList.remove('err'); el.classList.add('loading'); el.innerHTML = '<span class="rphmsg">写真を読み込み中…</span>';
+  el.classList.remove('err', 'idwait'); el.classList.add('loading'); el.innerHTML = '<span class="rphmsg">写真を読み込み中…</span>';
   phSmall(ref, n).then(b => {
     const u = URL.createObjectURL(b); (el.closest('#sheet') ? sheetUrls : listUrls).push(u);
     el.classList.remove('loading'); el.innerHTML = `<img src="${u}" class="zoomable" data-rph-zoom="${n}" alt="写真${n}(押すと大きく見られます)" role="button" tabindex="0">`;
-  }).catch(() => {
+  }).catch(err => {
     el.classList.remove('loading'); el.classList.add('err');
+    if (err && err.message === 'id_needed') { el.classList.add('idwait'); el.innerHTML = '<span class="rphmsg">Google で確かめると出ます</span><button type="button" class="small rphretry" data-rph-relogin="1">確かめる</button>'; return phNeedId(el); }
     el.innerHTML = `<span class="rphmsg">${PH_FAIL}</span><button type="button" class="small rphretry" data-rph-retry="1">再読み込み</button>`;
   });
+}
+// ---- 写真を開く時の「Google でもう一度確かめる」(20261028-0140。全員の記録の他の人の写真・管理の不具合の知らせの写し)----
+// ID トークンが切れていた時だけ、その場に案内と Google のボタンを出す(v32 の全員の記録・管理と同じ形)。確かめが済んだら(reconfirm)、待っていた写真をそのまま出す。
+// 電波が無い・写真が無い等は、今まで通り「読み込めません」と再読み込み。photoWaits: 確かめが済んだら続けること(不具合の知らせの写し)
+const photoWaits = new Set();
+const photoReloginHtml = what => `<div class="card relogin relogin-photo" role="status"><p><b>${what}を見るには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま${what}が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>`;
+// 小さな絵(一覧・記録を見る画面)が確かめ待ちになった: 記録を見る画面なら写真のすぐ上、一覧なら一覧のいちばん上に、案内を1つだけ出す
+function phNeedId(el) {
+  const root = el.closest('#sheet') || el.closest('#list'); if (!root) return;
+  if (!root.querySelector('.relogin-photo')) { const th = el.closest('.rthumbs'); if (th) th.insertAdjacentHTML('beforebegin', photoReloginHtml('この記録の写真')); else root.insertAdjacentHTML('afterbegin', photoReloginHtml('他の人の写真')); }
+  gsiSpot(root.querySelector('.relogin-photo'));
+}
+function photoResume() {
+  document.querySelectorAll('#sheet .relogin-photo, #list .relogin-photo').forEach(c => c.remove());
+  document.querySelectorAll('.rph.idwait').forEach(phFill);
+  if (viewer && viewer.idwait) { viewer.idwait = false; viewerShow(); }
+  const w = [...photoWaits]; photoWaits.clear(); w.forEach(f => { try { f(); } catch { /* 画面が閉じた */ } });
 }
 function phWatch(root) {
   const els = [...root.querySelectorAll('.rph[data-rph-id]:not(.watched)')]; if (!els.length) return;
@@ -1388,6 +1408,7 @@ function openRemoteViewer(ref, count, start) { openViewer(Array.from({ length: c
 // 小さな絵の「再読み込み」・押して拡大(一覧・記録を見る画面の共通)。押した物を扱ったら true
 function phClick(e) {
   const rb = e.target.closest('[data-rph-retry]'); if (rb) { e.stopPropagation(); phFill(rb.closest('.rph')); return true; }
+  const rl = e.target.closest('[data-rph-relogin]'); if (rl) { e.stopPropagation(); const c = (rl.closest('#sheet') || rl.closest('#list') || document).querySelector('.relogin-photo'); if (c) c.scrollIntoView({ block: 'center', behavior: 'smooth' }); return true; }   // 案内の Google のボタンの所へ
   const zi = e.target.closest('img[data-rph-zoom]'); if (!zi) return false;
   const box = zi.closest('.rph'), ref = { id: box.dataset.rphId, owner: box.dataset.rphOwner || '' }, cnt = Number(box.dataset.rphCount) || Number((zi.closest('[data-rph-total]') || {}).dataset?.rphTotal) || 1;
   e.stopPropagation(); openRemoteViewer(ref, cnt, Number(zi.dataset.rphZoom) - 1); return true;
@@ -1428,7 +1449,9 @@ function viewerShow() {
   else {   // 受け付けから取る(1800)。取っている間に別の写真へ移ったら、出さない
     const i = v.i; img.removeAttribute('src'); load.textContent = '読み込み中…';
     v.src[i]().then(b => { if (viewer !== v) return; v.urls[i] = URL.createObjectURL(b); if (v.i === i) img.src = v.urls[i]; })
-      .catch(() => { if (viewer !== v || v.i !== i) return; load.innerHTML = `${PH_FAIL}<br><button type="button" class="small vwretry">再読み込み</button>`; const rb = load.querySelector('.vwretry'); rb.onpointerdown = rb.onpointerup = rb.onpointermove = e => e.stopPropagation(); rb.onclick = e => { e.stopPropagation(); viewerShow(); }; });   // 押しても「まわりを押した」(閉じる)にしない
+      .catch(err => { if (viewer !== v || v.i !== i) return;
+        if (err && err.message === 'id_needed') { v.idwait = true; load.innerHTML = photoReloginHtml('この写真'); const c = load.firstElementChild; c.onpointerdown = c.onpointerup = c.onpointermove = e => e.stopPropagation(); return gsiSpot(c); }   // 20261028-0140: 押しても「まわりを押した」(閉じる)にしない
+        load.innerHTML = `${PH_FAIL}<br><button type="button" class="small vwretry">再読み込み</button>`; const rb = load.querySelector('.vwretry'); rb.onpointerdown = rb.onpointerup = rb.onpointermove = e => e.stopPropagation(); rb.onclick = e => { e.stopPropagation(); viewerShow(); }; });   // 押しても「まわりを押した」(閉じる)にしない
   }
   v.el.querySelector('.vwcount').textContent = v.urls.length > 1 ? `${v.i + 1} / ${v.urls.length}` : '';
   if (v.urls.length > 1) { v.el.querySelector('.vwprev').disabled = v.i === 0; v.el.querySelector('.vwnext').disabled = v.i === v.urls.length - 1; }
@@ -1859,7 +1882,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v32';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v33';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2024,14 +2047,30 @@ async function openBugDetail(x) {
     if (!r.ok) return toast(errText(r.error), 5000);
     x.state = r.state; x.memo = r.memo; toast(`番号 ${x.no} を「${r.state}」にしました`);
   }, '保存しています…');
-  for (let n = 1; n <= x.photoCount; n++) {
-    const el = $(`#bug-shots .rph[data-n="${n}"]`), r = await api('adminBugPhoto', { no: x.no, n }, API_WAIT_PHOTO_MS);
-    if (!el || !el.isConnected) return;
-    if (!r.ok) { el.querySelector('.rphmsg').textContent = '写しを読み込めません'; continue; }
-    const b = b64Blob(r.data), u = URL.createObjectURL(b); sheetUrls.push(u); blobs[n - 1] = b;
-    el.innerHTML = `<img src="${u}" alt="画面の写し ${n}" data-bugshot="${n - 1}">`;
-  }
   $('#bug-shots').onclick = e => { const im = e.target.closest('img[data-bugshot]'); if (im) openViewer(blobs.filter(Boolean), +im.dataset.bugshot); };
+  const shots = async ns => {
+    const wait = [];
+    for (const n of ns) {
+      const el = $(`#bug-shots .rph[data-n="${n}"]`), r = await api('adminBugPhoto', { no: x.no, n }, API_WAIT_PHOTO_MS);
+      if (!el || !el.isConnected) return;
+      if (!r.ok && r.error === 'id_needed') { el.querySelector('.rphmsg').textContent = `写し ${n}: Google で確かめると出ます`; wait.push(n); continue; }
+      if (!r.ok) { el.querySelector('.rphmsg').textContent = '写しを読み込めません'; continue; }
+      const b = b64Blob(r.data), u = URL.createObjectURL(b); sheetUrls.push(u); blobs[n - 1] = b;
+      el.innerHTML = `<img src="${u}" alt="画面の写し ${n}" data-bugshot="${n - 1}">`;
+    }
+    if (!wait.length) return;
+    // 20261028-0140: ID トークンが切れていた時は、写しのすぐ上に Google のボタンを出す(確かめが済んだら、この画面のまま写しを出す)
+    const box = $('#bug-shots');
+    if (!document.getElementById('relogin-bugshot')) { box.insertAdjacentHTML('beforebegin', photoReloginHtml('画面の写し').replace('relogin-photo"', 'relogin-photo" id="relogin-bugshot"')); }
+    gsiSpot(document.getElementById('relogin-bugshot'));
+    photoWaits.add(() => {
+      if (!box.isConnected) return;
+      const c = document.getElementById('relogin-bugshot'); if (c) c.remove();
+      wait.forEach(n => { const el = box.querySelector(`.rph[data-n="${n}"] .rphmsg`); if (el) el.textContent = `写し ${n} 読み込み中…`; });
+      shots(wait);
+    });
+  };
+  shots(Array.from({ length: x.photoCount }, (_, i) => i + 1));
 }
 
 // ---- 見本データ(名古屋市内・個人情報なし。設定で SHOW_DEMO か、URL に ?demo がある時だけボタンが出る) ----
