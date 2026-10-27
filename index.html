@@ -17,16 +17,17 @@ setTimeout(function () {
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
-<meta name="app-ver" content="cat-survey-v30">
+<meta name="copyright" content="© 2026 ikezos">
+<meta name="app-ver" content="cat-survey-v31">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=30">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=30">
-<link rel="stylesheet" href="style.css?v=30">
+<link rel="stylesheet" href="lib/leaflet.css?v=31">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=31">
+<link rel="stylesheet" href="style.css?v=31">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -75,6 +76,7 @@ setTimeout(function () {
     <button type="button" class="hs" data-go="settings"><svg class="ic md"><use href="#i-gear"/></svg><span>設定</span></button>
     <button type="button" class="hs hidden" id="home-admin" data-go="admin"><svg class="ic md"><use href="#i-admin"/></svg><span>管理</span></button>
   </div>
+  <p class="copy">© 2026 ikezos<br>無断の転用・複製を禁じます</p>
 </section>
 <section id="tab-record" class="tab">
   <div id="logincard" class="card login">
@@ -91,6 +93,7 @@ setTimeout(function () {
       <div id="scanbox-btn" class="scanbtnbox"><button type="button" id="btn-scan" class="primary bigbtn">📷 カードの QR を読む</button></div>
       <p class="note">管理者から受け取った<b>ログインカード</b>をお持ちの方は、上のボタンでカードの <b>QR コード</b>を読んでください(カメラを使います)。暗証番号(4けた)を聞かれます。はじめの1回だけで、次からはそのままログインしたままです。<br><b>iPhone の方は、先に「ホーム画面に追加」をして、ホーム画面のアプリを開いてから</b>読んでください(<a href="help.html#login">手順</a>)。カードをスマホの裏に<b>かざす</b>(NFC)方法もあります。</p>
     </div>
+    <p class="copy">© 2026 ikezos 無断の転用・複製を禁じます</p>
   </div>
   <div class="auto card">
     <div class="line"><span class="lbl">入力した人</span><span id="recorder" class="val">ログインしていません</span></div>
@@ -171,6 +174,7 @@ setTimeout(function () {
   <div class="card">
     <h3>アプリの版</h3>
     <p class="note">今の版: <b id="appver"></b></p>
+    <p class="copy">© 2026 ikezos 無断の転用・複製を禁じます</p>
     <button id="btn-vercheck" class="wide">新しい版を確かめる</button>
     <p class="note">起動の記録(困った時は、ここを写真に撮って管理者へ送ってください):</p>
     <pre id="bootlog" class="pre note"></pre>
@@ -203,12 +207,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=30"></script>
-<script src="lib/leaflet.markercluster.js?v=30"></script>
-<script src="lib/qr.js?v=30"></script>
-<script src="lib/jsQR.js?v=30"></script>
-<script src="scan.js?v=30"></script>
-<script src="config.js?v=30"></script>
-<script src="app.js?v=30"></script>
+<script src="lib/leaflet.js?v=31"></script>
+<script src="lib/leaflet.markercluster.js?v=31"></script>
+<script src="lib/qr.js?v=31"></script>
+<script src="lib/jsQR.js?v=31"></script>
+<script src="scan.js?v=31"></script>
+<script src="config.js?v=31"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>

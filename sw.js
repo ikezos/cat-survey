@@ -1,3 +1,4 @@
+// © 2026 ikezos. All rights reserved. 無断の転用・複製を禁じます
 // オフラインで画面を開けるようにする簡易キャッシュ(地図の下絵は対象外)。
 // 通信できるときは常に最新を取りに行き(取れたら控えを更新)、通信できないときだけ控えを使う。
 // 20261027-0731: ブラウザの控え(公開先の決まりで最大10分)を通さず、毎回サーバーに確かめる(cache: 'no-cache')。公開の直後に index.html と app.js の版が食い違って起動の途中で止まったため。
@@ -10,7 +11,7 @@
 // 20261027-0851: 入れ替えの決まりは画面(app.js)の側で決める。起動の直後なら自動で1回・使っている途中は「更新」を押すまで待つ(sw は前と同じく skipWaiting の知らせを待つ)。
 // 20261027-1051: 毛色の見本の写真(img/coat/・14色×小と大×WebP と JPEG)も入れる時に控える(電波なしでも出す)。
 // 20261027-1640: 中身が変わる物(説明書の PDF・使い方の画像・毛色の写真)も「?v=版」付きで読む。同じ名前のまま中身が変わると、古い控えが出続けたため(版が上がれば名前が変わり、必ずネットから取る)。
-const VER = 30, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+const VER = 31, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);
