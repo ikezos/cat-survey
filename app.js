@@ -90,10 +90,10 @@ async function busy(btn, fn, label = '処理中…') {
 const newId = (p = '') => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 // 古い画面の入れ替え(サービスワーカーが新しくなった・保存の入れ物を新しい版に譲った時)。入力の途中なら、保存して空になってから1回だけ読み込み直す
 let wantReload = false;
+const typingNow = () => !!(formTouched() || photos.length || (document.getElementById('feature') || {}).value || saving || !document.getElementById('sheet').classList.contains('hidden'));   // 保存していない入力がある・保存の途中・記録を開いている
 function maybeReload() {
   if (!wantReload) return;
-  const typing = formTouched() || photos.length || (document.getElementById('feature') || {}).value || saving || !document.getElementById('sheet').classList.contains('hidden');
-  if (typing) return;
+  if (typingNow()) return;
   const last = Number(sessionStorage.getItem('catSurvey.swReload') || 0); if (Date.now() - last < 60000) return;   // 続けて読み込み直さない(1回だけ)
   sessionStorage.setItem('catSurvey.swReload', String(Date.now())); location.reload();
 }
@@ -275,18 +275,23 @@ function openCardPin() {
   }, 'ログインしています…');
   setTimeout(() => { try { $('#pin').focus(); } catch { /* 画面が無い時 */ } }, 50);
 }
-let gsiState = 'loading';
+let gsiState = 'loading', gsiTimer = null;
+// 20261027-0820: Google の部品が10秒で読めなければ「読めない」とし、ログインの画面に「Google のボタンを出し直す」を出す(ログインカードのボタンは、部品を待たずに初めから出ている)
 function loadGsi() {
   if (!CONF.GOOGLE_CLIENT_ID) { gsiState = 'noconfig'; return renderAuth(); }
-  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
-  s.onload = () => { gsiState = 'ready'; initGsi(); renderAuth(); };
-  s.onerror = () => { gsiState = 'failed'; renderAuth(); };
+  bootMark('Googleの部品:読み込み開始');
+  const old = document.getElementById('gsi-script'); if (old) old.remove();
+  gsiState = 'loading'; clearTimeout(gsiTimer);
+  const s = document.createElement('script'); s.id = 'gsi-script'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
+  s.onload = () => { clearTimeout(gsiTimer); bootMark('Googleの部品:読めた'); gsiState = 'ready'; initGsi(); renderAuth(); };
+  s.onerror = () => { clearTimeout(gsiTimer); bootMark('Googleの部品:読めない'); gsiState = 'failed'; renderAuth(); };
+  gsiTimer = setTimeout(() => { if (gsiState === 'loading') { bootMark('Googleの部品:10秒で読めない'); gsiState = 'failed'; renderAuth(); } }, 10000);
   document.head.appendChild(s);
 }
 function initGsi() {
   try {
     google.accounts.id.initialize({ client_id: CONF.GOOGLE_CLIENT_ID, callback: window.onGoogleCredential, auto_select: true, itp_support: true, use_fedcm_for_prompt: true });
-    google.accounts.id.renderButton($('#gsi-btn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 });
+    google.accounts.id.renderButton($('#gsi-btn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 }); bootMark('Googleのボタン');
     if (auth && !isCard() && !tokenValid()) google.accounts.id.prompt(); // 前に Google でログインした人は、期限が切れていれば取り直しを促す
   } catch { gsiState = 'failed'; }
 }
@@ -300,9 +305,10 @@ function renderAuth() {
   bm.textContent = blocked ? (DENY_TEXT[blocked] || errText(blocked)) : '';
   if (!on) { const t = document.querySelector('.tab.active'); if (!t || t.id !== 'tab-record') showTab('record'); updateBadge().then(() => { const n = (($('#pending').textContent.match(/\d+/) || [0])[0]); $('#blockpending').textContent = n > 0 ? `この端末に未送信の記録が ${n} 件あります(消えていません。登録された方でログインすると送れます)。` : ''; $('#blockpending').classList.toggle('hidden', !(n > 0)); }); }
   else $('#blockpending').classList.add('hidden');
+  const rg = document.getElementById('btn-regsi'); if (rg) rg.classList.toggle('hidden', on || !configured() || !CONF.GOOGLE_CLIENT_ID || (gsiState === 'ready' && !!document.querySelector('#gsi-btn *')));
   const m = $('#loginmsg');
   m.textContent = checking ? '登録を確かめています…' : !configured() ? '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。'
-    : gsiState === 'failed' ? 'ログインの部品を読み込めませんでした。電波がある所で開き直してください。'
+    : gsiState === 'failed' ? 'Google のログインの部品を読み込めませんでした。電波がある所で「Google のボタンを出し直す」を押してください(ログインカードの方は、下のボタンでログインできます)。'
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
@@ -1677,7 +1683,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v22';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v25';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -1882,6 +1888,74 @@ function showTab(t) {
   }
 }
 
+// ---- 新しい版の知らせ(20261027-0734)----
+// 開いた時・前に出した時・30分ごとに、置き場に新しい版(sw.js)があるか確かめる。新しい版が入って待っていたら、上に「新しい版があります。」と「更新」を出す。
+// 「更新」を押すと、待っている版に入れ替えて1回だけ読み込み直す。入力の途中(保存していない入力がある)なら、読み込み直さずに案内だけ出す。
+// 画面そのもの(index.html・app.js)が、すでに待っている版と同じなら(サービスワーカーが毎回置き場に確かめるため)、知らせを出さずに黙って入れ替える。
+// 20261027-0851: 起動の直後(開いてから10秒の間で、まだ何も触っていない)に新しい版が入ったら、押さなくても自動で1回だけ読み込み直す。
+// それ以外(使っている途中)は、自動では読み込み直さず、知らせを出して「更新」が押されるまで待つ(ほかの画面で更新された時も同じ)。自動の読み込み直しは60秒に1回まで。
+const UPD_EVERY_MS = 30 * 60 * 1000, STARTUP_MS = 10000, AUTO_UPD_KEY = 'catSurvey.autoUpd';
+let swReg = null, updAsked = false, updReloaded = false, updQuiet = false, lastUpdCheck = 0, userTouched = false;
+['pointerdown', 'keydown', 'input'].forEach(t => window.addEventListener(t, () => { userTouched = true; }, { capture: true, once: true }));
+function inStartup() {   // 起動の直後で、まだ何も触っていない・入力も無い
+  return !userTouched && Date.now() - bootT0 < STARTUP_MS && !typingNow() && Date.now() - Number(sessionStorage.getItem(AUTO_UPD_KEY) || 0) > 60000;
+}
+function autoUpdate(w) {   // 起動の直後だけ: 押さなくても1回だけ入れ替えて読み込み直す
+  sessionStorage.setItem(AUTO_UPD_KEY, String(Date.now())); bootMark('新しい版に自動で入れ替え');
+  updAsked = true;
+  if (w) { w.postMessage({ type: 'skipWaiting' }); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }
+  else { updReloaded = true; location.reload(); }
+}
+function showUpdMsg() { const m = document.getElementById('updmsg'); if (m) m.classList.remove('hidden'); }
+function swVer(w) {   // 待っている版の名前を聞く(答えが無ければ '')
+  return new Promise(ok => { try { const ch = new MessageChannel(); const t = setTimeout(() => ok(''), 3000); ch.port1.onmessage = e => { clearTimeout(t); ok(String(e.data || '')); }; w.postMessage({ type: 'ver' }, [ch.port2]); } catch { ok(''); } });
+}
+async function onWaiting(w) {
+  if (!w || !navigator.serviceWorker.controller) return;
+  const v = await swVer(w);
+  if (v && v === APP_VER) { updQuiet = true; w.postMessage({ type: 'skipWaiting' }); return; }   // 画面はもう新しい版。黙って入れ替える
+  if (inStartup()) return autoUpdate(w);
+  showUpdMsg();
+}
+function watchSw(reg) {
+  if (reg.waiting) onWaiting(reg.waiting);
+  reg.addEventListener('updatefound', () => { const w = reg.installing; if (!w) return; w.addEventListener('statechange', () => { if (w.state === 'installed') onWaiting(w); }); });
+}
+async function checkUpdate(byHand) {   // byHand: 設定の「新しい版を確かめる」
+  lastUpdCheck = Date.now();
+  if (!swReg) { if (byHand) toast('この画面では新しい版を確かめられません', 5000); return; }
+  if (!navigator.onLine) { if (byHand) toast('電波が無いので、新しい版を確かめられません', 5000); return; }
+  try { await swReg.update(); } catch { if (byHand) toast('新しい版を確かめられませんでした。電波のある所でもう一度押してください', 6000); return; }
+  if (!byHand) return;
+  if (swReg.installing) await new Promise(ok => { const w = swReg.installing, t = setTimeout(ok, 15000); w.addEventListener('statechange', () => { if (w.state !== 'installing') { clearTimeout(t); ok(); } }); });
+  if (swReg.waiting) await onWaiting(swReg.waiting);
+  const m = document.getElementById('updmsg');
+  if (m && !m.classList.contains('hidden')) toast('新しい版があります。上の「更新」を押してください', 6000);
+  else toast('今の版が新しい版です(' + APP_VER.replace('cat-survey-', '') + ')');
+}
+function doUpdate() {
+  if (typingNow()) return toast('入力の途中です。保存してから「更新」を押してください(入力は消えていません)', 6000);
+  const w = swReg && swReg.waiting;
+  if (w) { updAsked = true; w.postMessage({ type: 'skipWaiting' }); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }   // 入れ替わりの知らせが来なければ5秒で読み込み直す
+  else { updReloaded = true; location.reload(); }   // もう入れ替わっている(ほかの画面で更新された)
+}
+
+// ---- 起動の記録(20261027-0820)----
+// 起動の段ごとに、開いてからの秒数を控える。設定の画面の「起動の記録」に、今回と前回の分を出す(困った時に写真で送れるように)
+const BOOTLOG_KEY = 'catSurvey.bootlog', bootT0 = window.catT0 || Date.now(), bootMarks = [];
+function bootMark(name) {
+  if (bootMarks.length > 40 || bootMarks.some(x => x[0] === name)) return;
+  bootMarks.push([name, Date.now() - bootT0]);
+  try { const all = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); const cur = { at: bootT0, ver: APP_VER, m: bootMarks };
+    if (all.length && all[0].at === bootT0) all[0] = cur; else all.unshift(cur); localStorage.setItem(BOOTLOG_KEY, JSON.stringify(all.slice(0, 3))); } catch { /* 保存できない時 */ }
+  renderBootLog();
+}
+function renderBootLog() {
+  const el = document.getElementById('bootlog'); if (!el) return;
+  let all = []; try { all = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); } catch { all = []; }
+  const two = n => String(n).padStart(2, '0'), when = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${two(d.getHours())}:${two(d.getMinutes())}`; };
+  el.textContent = all.slice(0, 2).map((x, i) => `${i ? '前回' : '今回'} ${when(x.at)} ${String(x.ver || '').replace('cat-survey-', '')}\n` + x.m.map(([k, t]) => `  ${(t / 1000).toFixed(1)}秒 ${k}`).join('\n')).join('\n') || '(まだありません)';
+}
 // ---- 起動(20261027-0731)----
 // 起動を段に分け、どの段が失敗しても残りの段は続ける(前は1か所の誤りで、その後の送信・未送信の数・選択肢の取り直し・サービスワーカーの登録が止まった)。
 // 失敗した段があれば、上に案内と「開き直す」を出し、自動の誤りに控える。最後まで来たら catBooted の印(index.html の見張りが12秒で案内を出す)。
@@ -1901,16 +1975,28 @@ function bootVersionOk() {
   showBootMsg('アプリの新しい版の読み込みが揃っていません。少し待ってから「開き直す」を押してください(この端末の記録は消えていません)。');
   return true;   // 読み込み直した後もまだ食い違う時は、案内を出して、そのまま先へ進む
 }
+bootMark('app.js:読めた');
+dbp.then(() => bootMark('端末の入れ物を開いた'), () => bootMark('端末の入れ物を開けない'));
 document.addEventListener('DOMContentLoaded', async () => {
+  bootMark('画面の部品が揃った');
   if (!bootStep('版の確かめ', bootVersionOk)) return;
   bootStep('サービスワーカー', () => {   // 先に登録する(後の段が失敗しても、新しい版に入れ替われるように)
     if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
-    // サービスワーカーが新しい版に替わったら、古い画面(古い app.js)を1回だけ読み込み直す(入力の途中なら、保存して空になってから)。初めて入った時(前の控えが無い)は読み込み直さない
+    // サービスワーカーが新しい版に替わったら、「新しい版があります。更新」を出す。「更新」を押した時だけ、すぐ1回読み込み直す。
+    // ほかの画面で更新された時は、起動の直後なら1回だけ読み込み直す。使っている途中なら知らせだけ出して「更新」を待つ(20261027-0851)。初めて入った時(前の控えが無い)は読み込み直さない
     const hadCtl = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl) return; wantReload = true; maybeReload(); });
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (updAsked) { if (!updReloaded) { updReloaded = true; location.reload(); } return; }
+      if (!hadCtl || updQuiet) { updQuiet = false; return; }
+      if (inStartup()) return autoUpdate(null);
+      showUpdMsg();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => { swReg = reg; watchSw(reg); }).catch(() => {});
+    setInterval(() => checkUpdate(false), UPD_EVERY_MS);   // 開いたままでも30分ごとに確かめる
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastUpdCheck > 60000) checkUpdate(false); });   // 前に出した時
   });
-  bootStep('入力の欄', buildForm); bootStep('位置', getGps); bootStep('ログインの表示', renderAuth); bootStep('ログインの部品', loadGsi);
+  bootStep('入力の欄', buildForm); bootStep('位置', getGps); bootStep('ログインの表示', renderAuth); bootMark(loggedIn() ? 'ログイン済み(通行証あり)' : 'ログインの画面を出した'); bootStep('ログインの部品', loadGsi);
+  bootStep('出し直し', () => { const rg = document.getElementById('btn-regsi'); if (rg) rg.onclick = () => { loadGsi(); renderAuth(); }; });
   bootStep('ボタン', () => {
   let wasOn = loggedIn();   // 通行証・ID トークンの期限が切れた時に、画面を閉じる(開いたままでも、期限が切れたら使えない)
   setInterval(() => { const on = loggedIn(); if (on === wasOn) return; wasOn = on; renderAuth(); if (!on && auth && !isCard() && navigator.onLine) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } }, 20000);
@@ -1954,6 +2040,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-refresh').onclick = e => busy(e.currentTarget, () => refreshFromServer(false).catch(err => toast(dbErrText(err), 6000)), '取り直しています…');
   $('#btn-logout').onclick = logout;
   });
+  bootStep('版の知らせ', () => {
+  $('#btn-update').onclick = doUpdate;
+  $('#appver').textContent = APP_VER.replace('cat-survey-', '');
+  $('#btn-vercheck').onclick = e => busy(e.currentTarget, () => checkUpdate(true), '確かめています…');
+  });
   bootStep('不具合の知らせ', () => {
   $('#btn-bug').onclick = () => openBugForm();
   $('#btn-bugmine').onclick = e => busy(e.currentTarget, openBugMine, '読み込んでいます…');
@@ -1967,8 +2058,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !autoP && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
   });
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
-  bootStep('未送信の数', updateBadge);
-  bootStep('選択肢と役割', refreshMeta);   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
+  bootStep('未送信の数', () => Promise.resolve(updateBadge()).then(() => bootMark('未送信の数を数えた')));
+  bootStep('選択肢と役割', () => { bootMark('受け付け:初めの呼び出し'); return Promise.resolve(refreshMeta()).then(() => bootMark('受け付け:初めの返事')); });   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
   bootStep('送信', syncQuiet); // 開いた時に、未送信があって電波があれば送る
-  window.catBooted = true;
+  window.catBooted = true; bootMark('起動の終わり'); renderBootLog();
 });

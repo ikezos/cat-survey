@@ -145,3 +145,4 @@ label.fl:has(#wipe-discard){display:flex;gap:10px;align-items:flex-start}
 .bugitem{cursor:pointer}.bugtext{font-size:14px;color:#333;margin-top:4px;word-break:break-all}.pre{white-space:pre-wrap;word-break:break-all}
 #bugfilter{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}#bugfilter .on{background:#2f6f4f;color:#fff;border-color:#2f6f4f}
 #bug-thumbs img,#bug-shots img{max-width:150px;max-height:200px;border-radius:6px;border:1px solid #ccc}
+.updmsg{background:#0b5394;color:#fff;padding:10px 14px;font-size:18px;font-weight:bold;line-height:1.5;display:flex;align-items:center;justify-content:space-between;gap:12px}.updmsg p{margin:0}.updmsg .small{color:#222;font-weight:bold;flex:none}.updmsg.hidden{display:none}
