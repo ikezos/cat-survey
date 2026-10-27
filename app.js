@@ -85,7 +85,8 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg" alt="" decoding="async"></picture>`;
+const ASSET_V = 30;   // sw.js の VER と同じ。中身が変わる物(画像・PDF)は ?v=版 を付けて読む(同じ名前で古い控えが出続けないように)
+const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
 const COAT_SVG = (() => {
   const W = '#fafafa', K = '#222', KI = '#8a7457', KID = '#3b2f22', CH = '#e39a4b', CHD = '#a85a1a', SA = '#a3a8ad', SAD = '#3d4247', GR = '#8e9092';
@@ -1789,7 +1790,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v28';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v30';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;

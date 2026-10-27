@@ -9,10 +9,11 @@
 // 画面(index.html)はネットに確かめるが、電波が弱くて3秒で返らなければ控えを出す(前は上限が無く、電波の弱い所で起動が止まった)。
 // 20261027-0851: 入れ替えの決まりは画面(app.js)の側で決める。起動の直後なら自動で1回・使っている途中は「更新」を押すまで待つ(sw は前と同じく skipWaiting の知らせを待つ)。
 // 20261027-1051: 毛色の見本の写真(img/coat/・14色×小と大×WebP と JPEG)も入れる時に控える(電波なしでも出す)。
-const VER = 28, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+// 20261027-1640: 中身が変わる物(説明書の PDF・使い方の画像・毛色の写真)も「?v=版」付きで読む。同じ名前のまま中身が変わると、古い控えが出続けたため(版が上がれば名前が変わり、必ずネットから取る)。
+const VER = 30, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
-const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon.svg', './icon-192.png', './icon-512.png', './lib/images/layers.png', './lib/images/layers-2x.png'].concat(COAT);
-const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].map(f => f + '?v=' + VER);
+const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
+const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);
 const FILES = PLAIN.concat(PAIRED);
 const verNum = k => { const m = /^cat-survey-v(\d+)$/.exec(k); return m ? +m[1] : 0; };
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, { cache: 'reload' }))))   // 全部揃わなければ入れ替わらない
