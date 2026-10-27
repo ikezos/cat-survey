@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v31">
+<meta name="app-ver" content="cat-survey-v32">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=31">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=31">
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="lib/leaflet.css?v=32">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=32">
+<link rel="stylesheet" href="style.css?v=32">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -56,6 +56,7 @@ setTimeout(function () {
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
 <div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
+<div id="relogin" class="card relogin hidden" role="status"><p><b>全員の記録を見るには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま全員の記録が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
 <div id="delbar" class="hidden"><label class="line chk"><input type="checkbox" id="showdel"><span>削除済みも見る(管理者)</span></label></div>
 <section id="tab-home" class="tab active">
   <div class="homecount">
@@ -183,6 +184,7 @@ setTimeout(function () {
   <div class="card">
     <h3>ログイン</h3>
     <p id="authinfo" class="note"></p>
+    <div id="reloginset" class="relogin hidden"><h4>Google でもう一度ログイン</h4><p class="note">「全員の記録」や「管理」で、もう一度確かめるように出た時は、ここからも確かめ直せます。ログアウトはしません。</p><p id="reloginstate" class="note"></p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
     <button id="btn-logout" class="wide">ログアウト</button>
   </div>
   <div class="card">
@@ -207,12 +209,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=31"></script>
-<script src="lib/leaflet.markercluster.js?v=31"></script>
-<script src="lib/qr.js?v=31"></script>
-<script src="lib/jsQR.js?v=31"></script>
-<script src="scan.js?v=31"></script>
-<script src="config.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="lib/leaflet.js?v=32"></script>
+<script src="lib/leaflet.markercluster.js?v=32"></script>
+<script src="lib/qr.js?v=32"></script>
+<script src="lib/jsQR.js?v=32"></script>
+<script src="scan.js?v=32"></script>
+<script src="config.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

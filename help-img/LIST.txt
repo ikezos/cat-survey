@@ -50,3 +50,5 @@
 34-card-loggedin.png
 40-admin-showdeleted.png
 41-dbmsg.png
+61-relogin-all.png
+62-relogin-settings.png

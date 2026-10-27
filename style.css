@@ -24,6 +24,7 @@ select,textarea{width:100%;font-size:16px;padding:8px;border-radius:8px;border:1
 .item{background:#fff;border-radius:10px;padding:8px 10px;margin-bottom:8px;display:flex;gap:8px}.item img{width:60px;height:60px;object-fit:cover;border-radius:6px}.item .st{font-size:13px;color:#c25a0a;font-weight:bold}.item .st.sent{color:#2f6f4f}
 table{width:100%;border-collapse:collapse;background:#fff}th,td{border:1px solid #ccc;padding:6px;text-align:center;font-size:15px}
 .toast{position:fixed;left:12px;right:12px;bottom:20px;z-index:3000;background:#222;color:#fff;border-radius:10px;padding:14px;text-align:center;font-size:16px;white-space:pre-line}
+.relogin.card{border:2px solid #2f6f4f}.relogin .gsi-spot{min-height:44px;display:flex;justify-content:center;margin:6px 0}.relogin h4{margin:10px 0 2px}.relogin p{margin:4px 0}#reloginset{border-top:1px solid #ddd;margin-top:8px;padding-top:4px}
 .login{border:2px solid #2f6f4f}.login h3{margin-top:0}#gsi-btn{min-height:44px;display:flex;justify-content:center;margin:6px 0}
 .item .st.remote{color:#555}
 .petwhy{margin-top:10px;padding-top:6px;border-top:1px dashed #ccc}.petwhy .opts button{min-height:48px}

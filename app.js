@@ -271,6 +271,7 @@ function decodeJwt(tok) {
 window.onGoogleCredential = async resp => {
   const p = resp && decodeJwt(resp.credential);
   if (!p || !p.exp) return toast('ログインの結果を読めませんでした', 5000);
+  if (loggedIn() && !isCard() && auth.email === (p.email || '')) return reconfirm(resp.credential, Number(p.exp));   // 20261027-2326: ログイン中の同じ人が確かめ直した時は、ログインの画面へ移らずにその場で続ける
   // 受け付けで確かめる(whoami)まで、ログインした形にしない(pending)。確かめる前の状態は端末に保存しない
   const prev = auth && !isCard() && auth.email === (p.email || '') && wasVerified(auth) ? auth : null;   // 同じ人が前に確かめを通っていれば、電波が無くても使える
   const mine = { type: 'google', idToken: resp.credential, exp: Number(p.exp), email: p.email || '', recorderId: prev && prev.recorderId || null, verified: !!prev, admin: prev && prev.admin, viewAll: prev && prev.viewAll, pass: prev && prev.pass || '', passExp: prev && prev.passExp || 0, pending: true };
@@ -282,14 +283,69 @@ window.onGoogleCredential = async resp => {
   else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('受け付けにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
   else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
+// ---- Google でもう一度確かめる(20261027-2326。艦長 msg 7007「もう一度ログインと出るが、どこからログインするのか不明」)----
+// 通行証でログインしたまま ID トークン(約1時間)が切れた人が「全員の記録」「管理」を開いた時、その場に Google のボタンを出す。
+// 確かめが済んだら、画面を移らずに、そのまま全員の記録(管理の画面)を出す。reauth: 確かめが済んだら続けること('all' / 'admin')
+let reauth = null, quietPromptAt = 0;
+async function reconfirm(cred, exp) {
+  const old = { idToken: auth.idToken, exp: auth.exp }, job = reauth;
+  auth.idToken = cred; auth.exp = exp; saveAuth();
+  const r = await api('whoami');
+  if (!auth) return;   // 確かめの途中で使えない人と分かった(api が取り消した)
+  if (!r.ok) {
+    if (noAnswer(r.error)) { auth.idToken = old.idToken; auth.exp = old.exp; saveAuth(); }   // 確かめられなかった(電波)。前のままにして、もう一度押せるようにする
+    renderRelogin(); return toast(errText(r.error), 6000);
+  }
+  if (r.recorderId) auth.recorderId = r.recorderId;
+  applyMeta(r); saveAuth(); reauth = null; renderAuth();
+  toast('Google で確かめました', 2500);
+  const tab = document.querySelector('.tab.active');
+  if (job === 'all' && auth.viewAll) await setScope('all');
+  else if (job === 'admin' && tab && tab.id === 'tab-admin') renderAdmin();
+}
+const GSI_BTN = { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 };
+// 箱(wrap)の中の .gsi-spot に Google のボタンを出す。出せない時は「Google のボタンを出し直す」と訳を出す
+function gsiSpot(wrap) {
+  if (!wrap) return;
+  const spot = wrap.querySelector('.gsi-spot'), rg = wrap.querySelector('.regsi'), m = wrap.querySelector('.gsi-msg');
+  if (!spot || !rg || !m) return;
+  if (gsiState === 'ready' && !spot.firstChild && wrap.offsetParent) { try { google.accounts.id.renderButton(spot, GSI_BTN); } catch { /* 部品が無い時 */ } }
+  const shown = gsiState === 'ready' && !!spot.querySelector('*');
+  rg.classList.toggle('hidden', shown || gsiState === 'loading');
+  m.textContent = shown ? '' : gsiState === 'loading' ? 'Google のボタンを読み込んでいます…' : !navigator.onLine ? '電波がありません。電波がある所で「Google のボタンを出し直す」を押してください。' : 'Google のボタンを出せませんでした。「Google のボタンを出し直す」を押してください。';
+}
+const RELOGIN_TABS = ['tab-list', 'tab-map', 'tab-stats', 'tab-sites'];
+function renderRelogin() {
+  const tab = document.querySelector('.tab.active'), g = loggedIn() && !isCard();
+  const box = $opt('#relogin');
+  if (box) { box.classList.toggle('hidden', !(g && reauth === 'all' && auth.viewAll && !idValid() && tab && RELOGIN_TABS.includes(tab.id))); gsiSpot(box); }
+  const set = $opt('#reloginset');
+  if (set) {
+    set.classList.toggle('hidden', !g);
+    const st = $opt('#reloginstate');
+    if (st) st.textContent = !g || !auth.viewAll ? '' : idValid() ? `全員の記録・管理の確かめ: 済み(あと約${Math.max(1, Math.round((auth.exp * 1000 - Date.now()) / 60000))}分)` : '全員の記録・管理の確かめ: 期限が切れています(下のボタンで確かめ直せます。ログアウトはしません)';
+    gsiSpot(set);
+  }
+  gsiSpot(document.getElementById('relogin-admin'));
+}
+// 通行証でログインしたまま、全員の記録・管理を見ている人の ID トークンが切れる前に、Google の自動のログイン(前に選んだアカウント)で静かに取り直す。
+// 選び直しの画面が出る時もあるので、全員の記録・管理を見ている時だけ・30分に1回まで(何度も出して嫌われると、Google が自動のログインをしばらく止めるため)
+function quietRefresh() {
+  if (!(loggedIn() && !isCard() && auth.viewAll && gsiState === 'ready' && navigator.onLine && document.visibilityState === 'visible')) return;
+  const tab = document.querySelector('.tab.active');
+  if (!(scope === 'all' || (tab && tab.id === 'tab-admin'))) return;
+  if (auth.exp * 1000 > Date.now() + 5 * 60000 || Date.now() - quietPromptAt < 30 * 60000) return;
+  quietPromptAt = Date.now();
+  try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ }
+}
 function denyAccess(err) {
-  auth = null; homeSrv = null; saveAuth(); blocked = err; setScope('mine', true); closeSheet();
+  auth = null; homeSrv = null; saveAuth(); blocked = err; reauth = null; setScope('mine', true); closeSheet();
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   renderAuth(); toast(errText(err), 7000);
 }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
-  auth = null; homeSrv = null; saveAuth(); setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
+  auth = null; homeSrv = null; saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   toast('ログアウトしました。この端末の記録は残っています(次にログインした時に送ります)');
 }
@@ -345,6 +401,7 @@ function loadGsi() {
   if (!CONF.GOOGLE_CLIENT_ID) { gsiState = 'noconfig'; return renderAuth(); }
   bootMark('Googleの部品:読み込み開始');
   const old = document.getElementById('gsi-script'); if (old) old.remove();
+  document.querySelectorAll('.gsi-spot').forEach(x => { x.textContent = ''; });   // 出し直す時は、その場の Google のボタンも作り直す
   gsiState = 'loading'; clearTimeout(gsiTimer);
   const s = document.createElement('script'); s.id = 'gsi-script'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
   s.onload = () => { clearTimeout(gsiTimer); bootMark('Googleの部品:読めた'); gsiState = 'ready'; initGsi(); renderAuth(); };
@@ -355,7 +412,7 @@ function loadGsi() {
 function initGsi() {
   try {
     google.accounts.id.initialize({ client_id: CONF.GOOGLE_CLIENT_ID, callback: window.onGoogleCredential, auto_select: true, itp_support: true, use_fedcm_for_prompt: true });
-    google.accounts.id.renderButton($('#gsi-btn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 }); bootMark('Googleのボタン');
+    google.accounts.id.renderButton($('#gsi-btn'), GSI_BTN); bootMark('Googleのボタン');
     if (auth && !isCard() && !tokenValid()) google.accounts.id.prompt(); // 前に Google でログインした人は、期限が切れていれば取り直しを促す
   } catch { gsiState = 'failed'; }
 }
@@ -375,7 +432,7 @@ function renderAuth() {
   m.textContent = checking ? '登録を確かめています…' : !configured() ? '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。'
     : gsiState === 'failed' ? 'Google のログインの部品を読み込めませんでした。電波がある所で「Google のボタンを出し直す」を押してください(ログインカードの方は、下のボタンでログインできます)。'
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
-  $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。`
+  $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。全員の記録は、Google でログインした人だけが見られます。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
   renderScopeBar();
   $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
@@ -456,7 +513,7 @@ async function api(action, extra = {}, ms) {
   if (!tokenValid()) return { ok: false, error: 'not_logged_in' };
   // 全員の記録・管理の操作は、Google の新しい ID トークンが要る(通行証だけでは通さない)
   const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all') || (action === 'photo' && (extra.items || []).some(i => i.ownerId));   // 他の人の記録の写真も、全員の記録と同じ
-  if (needId && !idValid()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? 'not_allowed' : 'id_needed' }; }
+  if (needId && !idValid()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? (/^admin/.test(action) ? 'not_allowed' : 'card_no_all') : 'id_needed' }; }   // カードの人: 全員の記録・他の人の写真は「Google でログインした人だけ」の案内
   // カードの人は通行証。Google の人は ID トークンが期限内ならそれ(通行証をまだ持っていなければ whoami で受け取る)、切れていれば通行証
   const cred = isCard() || !idValid() ? { pass: auth.pass } : { idToken: auth.idToken, ...(action === 'whoami' && !(auth.pass && auth.passExp > Date.now() + 7 * 864e5) ? { wantPass: true } : {}) };
   const viaPass = !!cred.pass;
@@ -485,7 +542,7 @@ const ERR_TEXT = {
   timeout: WEAK_TEXT_TRY,
   already_done: 'この操作は、もう受け付けで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
   deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。管理者に相談してください)。',
-  id_needed: '全員の記録・管理は、Google でもう一度ログインしてから使えます(ログインの期限が切れました)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
+  id_needed: '全員の記録・管理は、Google でもう一度確かめてから使えます。画面に出る Google のボタン(または設定の「Google でもう一度ログイン」)を押してください。', card_no_all: '全員の記録は、Google でログインした人だけが見られます(ログインカードでは、自分の記録だけです)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
 };
 const errText = e => ERR_TEXT[e] || `送れませんでした(${e || '不明'})`;
 const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = ng; r.readAsDataURL(b); });
@@ -951,19 +1008,22 @@ function renderScopeBar() {
   bar.classList.toggle('hidden', !show);
   bar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.scope === scope));
   const del = $('#delbar'); if (del) { del.classList.toggle('hidden', !(show && scope === 'all' && auth.admin && ['tab-list', 'tab-sites'].includes(tab.id))); $('#showdel').checked = showDeleted; }
+  renderRelogin();
 }
 async function setScope(sc, quiet) {
   if (sc === 'all') {
     if (!(auth && auth.viewAll)) return;
     if (!navigator.onLine) return toast('電波がありません。「全員の記録」は電波がある所で見られます', 4000);
-    if (!quiet) toast('全員の記録を取っています…', 2000);
+    if (!quiet && idValid()) toast('全員の記録を取っています…', 2000);   // 確かめが要る時は、取りに行かずに案内の箱を出す
     const r = await api('list', { scope: 'all', ...(showDeleted && auth.admin ? { includeDeleted: true } : {}) });
     if (!r.ok) {
       if (r.error === 'not_allowed') { auth.viewAll = false; saveAuth(); }
-      toast(errText(r.error), 5000); scope = 'mine'; allView = null; renderScopeBar(); renderActiveTab(); return;
+      if (r.error === 'id_needed') reauth = 'all';   // その場に Google のボタンを出す(確かめが済んだら、そのまま全員の記録を出す)
+      else toast(errText(r.error), 5000);
+      scope = 'mine'; allView = null; renderScopeBar(); renderActiveTab(); return;
     }
     allView = { records: r.records || [], sites: r.sites || [] }; scope = 'all';
-  } else { scope = 'mine'; allView = null; }
+  } else { scope = 'mine'; allView = null; if (!quiet) reauth = null; }
   renderScopeBar(); if (!quiet) renderActiveTab();
 }
 // 全員の写しに、端末の自分の物を重ねる(送っていない物・直した物・消した物も今の形で出る。前は切り替えた時の写しだけで、後から保存した猫が集計に入らなかった)
@@ -1625,7 +1685,13 @@ async function renderAdmin() {
   if (!(loggedIn() && auth.admin && !isCard())) { box.innerHTML = '<div class="card"><p class="note">この画面は、「管理者」の役割になっている Google アカウントの人だけが使えます。</p></div>'; return; }
   if (!navigator.onLine) { box.innerHTML = '<div class="card"><p class="warn">電波がありません。管理の画面は電波がある所で使えます。</p></div>'; return; }
   box.innerHTML = '<div class="card"><p class="note">読み込んでいます…</p></div>';
-  const r = await api('adminList'); if (!r.ok) { box.innerHTML = `<div class="card"><p class="warn">${esc(errText(r.error))}</p></div>`; if (r.error === 'not_allowed') { auth.admin = false; saveAuth(); renderAuth(); } return; }
+  const r = await api('adminList');
+  if (!r.ok && r.error === 'id_needed') {   // 20261027-2326: 通行証だけの時は、その場に Google のボタンを出す(確かめが済んだら、そのまま管理の画面を出す)
+    reauth = 'admin';
+    box.innerHTML = `<div class="card relogin" id="relogin-admin"><p><b>管理の画面を使うには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま管理の画面が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>`;
+    return gsiSpot($('#relogin-admin'));
+  }
+  if (!r.ok) { box.innerHTML = `<div class="card"><p class="warn">${esc(errText(r.error))}</p></div>`; if (r.error === 'not_allowed') { auth.admin = false; saveAuth(); renderAuth(); } return; }
   adminData = r;
   const people = r.recorders.slice().sort((a, b) => (a.type === 'card') - (b.type === 'card') || (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
   const person = x => {
@@ -1702,11 +1768,13 @@ async function adminApi(action, extra) {
   if (!lastReq || lastReq.key !== key) lastReq = { key, id: newId('q') };
   const r = await api(action, { ...extra, reqId: lastReq.id });
   if (!noAnswer(r.error)) lastReq = null;
+  if (r.error === 'id_needed') adminRelogin();   // 20261027-2340: 管理の画面を開いたまま切れた時も、知らせだけで終わらずにその場に Google のボタンを出す
   return r;
 }
+function adminRelogin() { const t = document.querySelector('.tab.active'); if (sheetId) closeSheet(); else if (t && t.id === 'tab-admin') renderAdmin(); }
 // 管理の画面の押し物(登録・カードを作る・一覧の操作)。押したボタンは、終わるまで押せない
 function onAdminClick(e) {
-  const b = e.target.closest('button'); if (!b || sheetBusy) return;
+  const b = e.target.closest('button'); if (!b || sheetBusy || b.classList.contains('regsi')) return;
   if (b.dataset.act === 'peek') return adminClick(b, e);   // メールを見せる・隠すは画面の中だけ
   return busy(b, () => adminClick(b, e));
 }
@@ -1791,7 +1859,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v31';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v32';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -1931,7 +1999,7 @@ async function openBugMine() {
 let bugFilter = '';
 async function openBugAdmin() {
   if (!(loggedIn() && auth.admin && !isCard())) return;
-  const r = await api('adminBugList'); if (!r.ok) return toast(errText(r.error), 5000);
+  const r = await api('adminBugList'); if (!r.ok) { if (r.error === 'id_needed') adminRelogin(); return toast(errText(r.error), 5000); }
   const items = r.items.filter(x => !bugFilter || x.state === bugFilter);
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>不具合の知らせ(${r.items.length}件)</b></div><div class="sheetbody">
     <div class="row seg" id="bugfilter">${['', '新しい', '対応中', '済み'].map(s => `<button type="button" class="small${s === bugFilter ? ' on' : ''}" data-f="${s}">${s || 'すべて'}(${r.items.filter(x => !s || x.state === s).length})</button>`).join('')}</div>
@@ -2117,10 +2185,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastUpdCheck > 60000) checkUpdate(false); });   // 前に出した時
   });
   bootStep('入力の欄', buildForm); bootStep('位置', getGps); bootStep('ログインの表示', renderAuth); bootMark(loggedIn() ? 'ログイン済み(通行証あり)' : 'ログインの画面を出した'); bootStep('ログインの部品', loadGsi);
-  bootStep('出し直し', () => { const rg = document.getElementById('btn-regsi'); if (rg) rg.onclick = () => { loadGsi(); renderAuth(); }; });
+  bootStep('出し直し', () => { const rg = document.getElementById('btn-regsi'); if (rg) rg.onclick = () => { loadGsi(); renderAuth(); };
+    document.addEventListener('click', e => { if (e.target.closest('button.regsi')) { loadGsi(); renderAuth(); } }); });   // その場の「Google のボタンを出し直す」(全員の記録・管理・設定)
   bootStep('ボタン', () => {
   let wasOn = loggedIn();   // 通行証・ID トークンの期限が切れた時に、画面を閉じる(開いたままでも、期限が切れたら使えない)
-  setInterval(() => { const on = loggedIn(); if (on === wasOn) return; wasOn = on; renderAuth(); if (!on && auth && !isCard() && navigator.onLine) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } }, 20000);
+  setInterval(() => { quietRefresh(); renderRelogin(); const on = loggedIn(); if (on === wasOn) return; wasOn = on; renderAuth(); if (!on && auth && !isCard() && navigator.onLine) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } }, 20000);
   readCardFromUrl();   // カードの URL(#card=…)で開かれたら、合言葉を URL から消して、暗証番号を聞く
   window.addEventListener('hashchange', readCardFromUrl);   // 開いたままの画面で、もう一度カードをかざした(# だけ変わった)時も同じ
   $('#tab-admin').onclick = onAdminClick; $('#tab-admin').onchange = onAdminChange;
