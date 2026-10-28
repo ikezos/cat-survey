@@ -222,6 +222,8 @@ const getRecord = id => run('readonly', s => s.get(id));
 const putAll = rs => run('readwrite', s => { rs.forEach(r => s.put(r)); });
 const clearAll = async () => { await run('readwrite', s => s.clear()); await run('readwrite', s => s.clear(), SITES); };
 const allSites = () => run('readonly', s => s.getAll(), SITES);
+// 記録に結び付けられるえさ場(★その3): 自分のえさ場 + グループの Google の人はグループのほかの人のえさ場(画面を開いている間に取ったグループの記録から)。カードの人は自分のだけ
+const pickSites = async () => { const mine = await allSites(); if (!grpView()) return mine; if (!gview) { loadGview(false); return mine; } return [...mine, ...gview.sites.filter(x => x.mine === false && !x.deleted).map(x => ({ ...x, status: 'sent', grp: true }))]; };
 const getSite = id => run('readonly', s => s.get(id), SITES);
 const putSites = rs => run('readwrite', s => { rs.forEach(r => s.put(r)); }, SITES);
 
@@ -283,7 +285,7 @@ window.onGoogleCredential = async resp => {
   else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('受け付けにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
   else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
-// ---- Google でもう一度確かめる(20261027-2326。艦長 msg 7007「もう一度ログインと出るが、どこからログインするのか不明」)----
+// ---- Google でもう一度確かめる(20261027-2326。利用者の声「もう一度ログインと出るが、どこからログインするのか不明」)----
 // 通行証でログインしたまま ID トークン(約1時間)が切れた人が「全員の記録」「管理」を開いた時、その場に Google のボタンを出す。
 // 確かめが済んだら、画面を移らずに、そのまま全員の記録(管理の画面)を出す。reauth: 確かめが済んだら続けること('all' / 'admin')
 let reauth = null, quietPromptAt = 0;
@@ -343,13 +345,13 @@ function quietRefresh() {
   try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ }
 }
 function denyAccess(err) {
-  auth = null; homeSrv = null; saveAuth(); blocked = err; reauth = null; setScope('mine', true); closeSheet();
+  auth = null; homeSrv = null; gReset(); saveAuth(); blocked = err; reauth = null; setScope('mine', true); closeSheet();
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   renderAuth(); toast(errText(err), 7000);
 }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
-  auth = null; homeSrv = null; saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
+  auth = null; homeSrv = null; gReset(); saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   toast('ログアウトしました。この端末の記録は残っています(次にログインした時に送ります)');
 }
@@ -401,7 +403,7 @@ function openCardPin() {
 }
 let gsiState = 'loading', gsiTimer = null, gsiRetry = null, gsiTry = 0, gsiNo = 0;
 // 20261027-0820: Google の部品が10秒で読めなければ「読めない」とし、ログインの画面に「Google のボタンを出し直す」を出す(ログインカードのボタンは、部品を待たずに初めから出ている)
-// 20261028-0840(艦長 msg 7022「Googleのボタンが出せないケースがある」): 読めなかった時、電波がある間は「出せませんでした」にする前に裏で2回まで読み直す(その間は「読み込んでいます…」)。
+// 20261028-0840(利用者の声「Googleのボタンが出せないケースがある」): 読めなかった時、電波がある間は「出せませんでした」にする前に裏で2回まで読み直す(その間は「読み込んでいます…」)。
 //  前は1回読めないと、押すまで読み直さなかった。電波が戻った時・画面に戻った時も、読めていなければ読み直す。部品がもう届いている(前に読めた)時は、読み込まずにそれでボタンを出す
 const GSI_WAIT_MS = 10000, GSI_RETRY_MS = [3000, 8000];
 const gsiThere = () => !!(window.google && google.accounts && google.accounts.id && typeof google.accounts.id.renderButton === 'function');
@@ -462,9 +464,9 @@ function renderAuth() {
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。全員の記録は、Google でログインした人だけが見られます。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
-  renderScopeBar();
+  renderScopeBar(); renderJoinNote(); renderHomeGroup();
   $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
-  if (on && !wasLoggedIn) { wasLoggedIn = true; showTab('home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
+  if (on && !wasLoggedIn) { wasLoggedIn = true; showTab(joinCode ? 'join' : 'home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
   $('#btn-logout').classList.toggle('hidden', !auth);
   if (window.CardKit) CardKit.refresh();   // 「カードの QR を読む」の置き場所・Android の「ホーム画面に追加」の案内
@@ -485,6 +487,7 @@ let optionsDirty = false;
 function applyMeta(r) {
   if (!r || !r.ok) return;
   takeHomeCounts(r);
+  if ('group' in r) takeGroup(r.group);   // 2026-10-28 グループ(古い受け付けは group を返さない=何も変えない)
   if (r.viaPass && auth && !isCard()) r = { ...r, viewAll: auth.viewAll, admin: auth.admin };   // 通行証で通った返事は役割を返さない(前の ID トークンで分かった役割を消さない)
   if (auth && auth.viewAll !== !!r.viewAll) { auth.viewAll = !!r.viewAll; saveAuth(); if (!auth.viewAll && scope === 'all') setScope('mine', true); renderScopeBar(); }
   if (auth && (auth.admin !== !!r.admin || (r.name != null && isCard() && auth.name !== r.name))) { auth.admin = !!r.admin; if (isCard() && r.name != null) auth.name = r.name; saveAuth(); renderAuth(); }
@@ -572,6 +575,12 @@ const ERR_TEXT = {
   deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。管理者に相談してください)。',
   id_needed: '全員の記録・管理は、Google でもう一度確かめてから使えます。画面に出る Google のボタン(または設定の「Google でもう一度ログイン」)を押してください。', card_no_all: '全員の記録は、Google でログインした人だけが見られます(ログインカードでは、自分の記録だけです)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
 };
+Object.assign(ERR_TEXT, {   // グループ(2026-10-28 その2)
+  already_in_group: 'すでにグループに入っています(入れるグループは1つだけです)。', already_requested: 'すでに参加を申し込んでいます(承認待ち)。取り消してから、もう一度申し込めます。',
+  too_many_tries: '参加の申し込みが多すぎます。1時間ほど待ってから、もう一度リンクを押してください。', not_leader: 'リーダーだけができる操作です。', not_in_group: 'グループに入っていません。',
+  leader_cannot_leave: 'リーダーは抜けられません(リーダーを替えるには、管理者に頼んでください)。', not_member: 'この人は、このグループのメンバーではありません(画面を読み直してください)。', requester_in_group: 'この人は、ほかのグループに入りました。申し込みは取り消されました。',
+  card_not_allowed: 'ログインカードの人は、グループを作れません。', card_no_group: 'ログインカードの人は、グループの記録を見られません(自分の記録だけです)。',
+  need_login: 'グループを作る・承認する・外すなどは、Google でもう一度ログインしてから使えます(設定の「Google でもう一度ログイン」)。' });
 const errText = e => ERR_TEXT[e] || `送れませんでした(${e || '不明'})`;
 const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = ng; r.readAsDataURL(b); });
 
@@ -914,12 +923,12 @@ function sitesNear(sites, ref, maxM) {
 //  1行目「えさ場なし」→「近くのえさ場」(猫の位置から100m以内・近い順・距離つき)→ 区切り「そのほかの自分のえさ場」(残りの使っている物・近い順・距離つき)
 //  list = 候補(d = 猫の位置からの距離m。位置が無ければ null)、head = 区切りの前に出す物(今のえさ場が使えない時など)、
 //  none = 1行目の文字、cur = 今のえさ場ID(「(今)」の印)、empty = 近くに1つも無い時に出す1行
-const siteOpt = (x, cur) => `<option value="${esc(x.id)}">${esc(x.name)}${x.d != null ? `(約 ${x.d}m)` : ''}${cur === x.id ? '(今)' : ''}${x.status === 'pending' ? '・未送信' : ''}${x.retired ? '・使っていない' : ''}</option>`;
+const siteOpt = (x, cur) => `<option value="${esc(x.id)}">${esc(x.name)}${x.d != null ? `(約 ${x.d}m)` : ''}${cur === x.id ? '(今)' : ''}${x.grp ? '・グループ' : ''}${x.status === 'pending' ? '・未送信' : ''}${x.retired ? '・使っていない' : ''}</option>`;
 const siteOptions = (list, { none, cur, empty, head = [] }) => {
   const near = list.filter(x => x.d != null && x.d <= SITE_NEAR_M), rest = list.filter(x => !near.includes(x)), placed = list.some(x => x.d != null);
   return `<option value="">${esc(none)}${cur === '' ? '(今)' : ''}</option>` + head.map(x => siteOpt(x, cur)).join('') +
     (near.length ? `<optgroup label="近くのえさ場(猫の位置から${SITE_NEAR_M}m以内)">${near.map(x => siteOpt(x, cur)).join('')}</optgroup>` : placed && empty ? `<option value="" disabled>${esc(empty)}</option>` : '') +
-    (rest.length ? `<optgroup label="${placed ? 'そのほかの自分のえさ場' : '自分のえさ場'}">${rest.map(x => siteOpt(x, cur)).join('')}</optgroup>` : '');
+    (rest.length ? `<optgroup label="${list.some(x => x.grp) ? (placed ? 'そのほかの自分とグループのえさ場' : '自分とグループのえさ場') : placed ? 'そのほかの自分のえさ場' : '自分のえさ場'}">${rest.map(x => siteOpt(x, cur)).join('')}</optgroup>` : '');
 };
 // 自分の使っているえさ場を、ref(猫の位置)から近い順に・距離つきで。ref が無ければ名前の順(距離なし)
 const siteCands = (sites, ref) => ref ? sitesNear(sites, ref) : liveSites(sites).map(x => ({ ...x, d: null })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -927,7 +936,7 @@ const siteCands = (sites, ref) => ref ? sitesNear(sites, ref) : liveSites(sites)
 let siteToken = 0;
 async function renderSiteCands() {
   const sel = $('#sitesel'), my = ++siteToken; if (!sel) return;
-  let all; try { all = await allSites(); } catch { return; }
+  let all; try { all = await pickSites(); } catch { return; }
   if (my !== siteToken) return;
   const list = siteCands(all, loc);
   if (form.siteId && !list.some(x => x.id === form.siteId)) { delete form.siteId; hideSiteAsk(); }
@@ -944,7 +953,7 @@ async function onSitePick(v) {
   hideSiteAsk();
   if (!v) { delete form.siteId; return renderSiteCands(); }
   form.siteId = v;
-  let x; try { x = (await allSites()).find(s => s.id === v); } catch { return; }
+  let x; try { x = (await pickSites()).find(s => s.id === v); } catch { return; }
   if (!x || form.siteId !== v) return;
   const d = loc ? Math.round(distM(loc, x)) : null;
   if (d != null && d <= SITE_NEAR_M) return renderSiteCands();
@@ -1037,18 +1046,19 @@ function renderScopeBar() {
   bar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.scope === scope));
   const del = $('#delbar'); if (del) { del.classList.toggle('hidden', !(show && scope === 'all' && auth.admin && ['tab-list', 'tab-sites'].includes(tab.id))); $('#showdel').checked = showDeleted; }
   const wb = $opt('#whobar'); if (wb) { wb.classList.toggle('hidden', !(show && scope === 'all' && allView)); if (show && scope === 'all' && allView) renderWhoOpts(); }
+  renderGbar();
   renderRelogin();
 }
 // 入力した人で絞る(2026-10-28 0911): 全員の記録の時だけ。プルダウン(すべて/名前/名前の無い人は ID 6けた)と検索の欄(打つとプルダウンの中身がその場で絞られる)
 // 選ぶと、一覧・地図・集計・えさ場がその人の記録だけになる(件数・さくら耳などの絞り込みと一緒に効く)。名前は受け付けが全員の記録の時だけ返す(names)
 let whoPick = '', whoQ = '';
-const nameOf = id => (id && allView && allView.names && allView.names[id]) || '';
+const nameOf = id => { const v = curView(); return (id && v && v.names && v.names[id]) || ''; };   // 全員の記録・グループの記録の時だけ名前が来る
 const whoKey = x => x.mine ? String(auth && auth.recorderId || '') : String(x.recorderId || '');
-const byWho = x => !(scope === 'all' && whoPick) || whoKey(x) === whoPick;
+const byWho = x => scope === 'all' ? (!whoPick || whoKey(x) === whoPick) && byGrp(x) : gWhoNow() ? (gWhoNow() === 'me' ? x.mine !== false : whoKey(x) === gWhoNow()) : true;   // グループ: 全員 / 自分だけ / その人
 const whoLabelOf = id => { const n = nameOf(id), me = auth && auth.recorderId === id; return (me ? '自分' + (n ? '(' + n + ')' : '') : n || 'ID ' + id.slice(0, 6)); };
 function whoPeople() {
   const ids = new Set(auth && auth.recorderId ? [String(auth.recorderId)] : []);   // 全員の記録・えさ場に出てくる人(と自分)
-  for (const x of [...(allView ? allView.records : []), ...(allView ? allView.sites : [])]) if (x.recorderId) ids.add(String(x.recorderId));
+  const v = curView(); for (const x of [...(v ? v.records : []), ...(v ? v.sites : [])]) if (x.recorderId) ids.add(String(x.recorderId));
   return [...ids].map(id => ({ id, label: whoLabelOf(id) })).sort((a, b) => (b.id === String(auth && auth.recorderId)) - (a.id === String(auth && auth.recorderId)) || a.label.localeCompare(b.label, 'ja'));
 }
 function renderWhoOpts() {
@@ -1062,6 +1072,24 @@ function renderWhoOpts() {
   const n = people.filter(hit).length;
   $('#who-found').textContent = whoPick ? `${whoLabelOf(whoPick)}の記録だけを出しています` : q ? (n ? `${people.length}人のうち ${n}人が当てはまります。プルダウンから選んでください` : '当てはまる人はいません') : '';
   if ($('#who-q').value !== whoQ) $('#who-q').value = whoQ;
+  renderGrpOpts();
+}
+// グループで絞る(2026-10-28 その3): 管理者・全体を見る人の「全員の記録」の時だけ。すべて / 各グループ / グループなし。入力した人と一緒に効く。
+// 最後に選んだ物は端末に覚える(読めない・壊れている時は「すべて」)。グループの名前は受け付けが全員の記録の時だけ返す(groups)
+const AGRP_KEY = 'catSurvey.allGroup', AGRP_NONE = '-';
+const agrpRead = () => { try { const v = localStorage.getItem(AGRP_KEY); return v && /^(-|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
+let grpPick = agrpRead();
+function grpPickSave(v) { grpPick = v; try { if (v) localStorage.setItem(AGRP_KEY, v); else localStorage.removeItem(AGRP_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
+const grpNames = () => (allView && allView.groups) || {};
+const grpNow = () => scope === 'all' && allView && (grpPick === AGRP_NONE || grpNames()[grpPick]) ? grpPick : '';   // 覚えていたグループが今は無い時は「すべて」で出す(覚えた物は消さない)
+const byGrp = x => { const g = grpNow(); return !g || (g === AGRP_NONE ? !x.groupId : x.groupId === g); };
+function renderGrpOpts() {
+  const sel = document.querySelector('#grp-pick'); if (!sel) return;
+  const names = grpNames(), ids = Object.keys(names).sort((a, b) => names[a].localeCompare(names[b], 'ja'));
+  $('#grp-pick-l').classList.toggle('hidden', !ids.length);   // グループが1つも無い時は出さない(古い受け付けも)
+  sel.innerHTML = `<option value="">すべて</option>` + ids.map(id => `<option value="${esc(id)}">${esc(names[id])}</option>`).join('') + `<option value="${AGRP_NONE}">グループなし</option>`;
+  const g = grpNow(); sel.value = g;
+  $('#grp-found').textContent = !ids.length ? '' : g === AGRP_NONE ? 'いま:どのグループにも入っていない記録だけ' : g ? `いま:${names[g]} の記録だけ` : '';
 }
 async function setScope(sc, quiet) {
   if (sc === 'all') {
@@ -1075,14 +1103,15 @@ async function setScope(sc, quiet) {
       else toast(errText(r.error), 5000);
       scope = 'mine'; allView = null; renderScopeBar(); renderActiveTab(); return;
     }
-    allView = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {} }; scope = 'all';
+    allView = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {}, groups: r.groups && typeof r.groups === 'object' ? r.groups : {} }; scope = 'all';
   } else { scope = 'mine'; allView = null; whoPick = ''; whoQ = ''; if (!quiet) reauth = null; }
   renderScopeBar(); if (!quiet) renderActiveTab();
 }
 // 全員の写しに、端末の自分の物を重ねる(送っていない物・直した物・消した物も今の形で出る。前は切り替えた時の写しだけで、後から保存した猫が集計に入らなかった)
-const mergeMine = (remote, local) => { const ids = new Set(local.map(x => x.id)); return [...remote.filter(x => !(x.mine && ids.has(x.id))), ...local.map(x => ({ ...x, mine: true }))]; };
-const viewAllRecords = async () => scope === 'all' && allView ? mergeMine(allView.records, await allRecords()).filter(byWho) : allRecords();   // 削除した物も含む。入力した人を選んでいる時は、その人の物だけ
-const viewAllSites = async () => scope === 'all' && allView ? mergeMine(allView.sites, await allSites()) : allSites();
+const mergeMine = (remote, local) => { const ids = new Set(local.map(x => x.id)), rg = new Map(remote.filter(x => x.mine).map(x => [x.id, x.groupId || ''])), myG = auth && auth.group ? auth.group.id : '';   // ★その3: 端末の自分の物にも、受け付けのグループID を付ける(まだ届いていない物は今のグループ)
+  return [...remote.filter(x => !(x.mine && ids.has(x.id))), ...local.map(x => ({ ...x, mine: true, groupId: rg.has(x.id) ? rg.get(x.id) : myG }))]; };
+const viewAllRecords = async () => scope === 'all' && allView ? mergeMine(allView.records, await allRecords()).filter(byWho) : gActive() ? mergeMine(gview.records, await allRecords()).filter(byWho) : allRecords();   // 削除した物も含む。入力した人を選んでいる時は、その人の物だけ
+const viewAllSites = async () => scope === 'all' && allView ? mergeMine(allView.sites, await allSites()) : gActive() ? mergeMine(gview.sites, await allSites()) : allSites();
 const viewRecords = async () => (await viewAllRecords()).filter(r => !r.deleted);   // 一覧・地図・集計は、削除した物を出さない
 const viewSites = async () => (await viewAllSites()).filter(x => !x.deleted);
 // 削除から30日の間か(元に戻せるか)。受け付けの日時(日本時間の 'yyyy-MM-dd HH:mm:ss')と、端末の日時(ISO)のどちらも読む
@@ -1090,11 +1119,204 @@ const tms = t => /^\d{4}-\d\d-\d\d \d\d:\d\d/.test(String(t || '')) ? Date.parse
 const RESTORE_DAYS = 30, canRestore = x => !!x.deleted && Date.now() - tms(x.deletedAt) <= RESTORE_DAYS * 864e5;
 const delMark = x => `<span class="mark del">削除済み${x.deletedAt ? '(' + esc(fmtShort(x.deletedAt)) + ')' : ''}</span>`;
 async function recById(id) {
-  if (scope === 'all' && allView) { const a = allView.records.find(x => x.id === id && !x.mine) || allView.records.find(x => x.id === id); if (a) { if (a.mine) { const l = await getRecord(id); if (l) return l; } return a; } }
+  const rv = curView(); if (rv) { const a = rv.records.find(x => x.id === id && !x.mine) || rv.records.find(x => x.id === id); if (a) { if (a.mine) { const l = await getRecord(id); if (l) return l; } return a; } }
   return getRecord(id);
 }
 const siteNameOf = (id, sm) => id ? ((sm.get(id) || {}).name || 'えさ場(見つかりません)') : '';
 const whoText = r => r.recorderId ? (nameOf(r.recorderId) ? `入力者 ${nameOf(r.recorderId)}` : `入力者 ID ${String(r.recorderId).slice(0, 6)}`) : '';   // 名前があれば名前(全員の記録の時だけ来る)
+
+// ---- グループ(2026-10-28 その2)----
+// グループの Google の人は、一覧・地図・集計・えさ場で、自分の記録 + グループの記録を見る(受け付けの list scope:'group')。グループの記録は端末に保存しない(画面を開いている間だけ持つ)。
+// カードの人・グループなしの人は今のまま(自分の分だけ)。「全員の記録」(役割)を見ている間は、そちらが先。
+// 入力した人の絞り込み(全員/自分だけ/名前)は、最後に選んだ物を端末に覚える(読めない時は「全員」・最初は「全員」)
+const GWHO_KEY = 'catSurvey.groupWho', GVIEW_MS = 60000, GSTAT_MS = 60000, JOIN_KEY = 'catSurvey.join';
+let gview = null, gviewP = null, gstat = null, gstatP = null, joinCode = '', gconfirm = null, gcreate = false, gcopyFail = false, gReq = null;
+const grpView = () => !!(loggedIn() && !isCard() && auth.group && auth.group.view && scope !== 'all');
+const gActive = () => grpView() && !!gview;
+const wide = () => (scope === 'all' && !!allView) || gActive();   // ほかの人の記録も出ている
+const curView = () => scope === 'all' && allView ? allView : gActive() ? gview : null;
+const gWhoRead = () => { try { const v = localStorage.getItem(GWHO_KEY); return v && /^(me|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
+let gWho = gWhoRead();
+function gWhoSave(v) { gWho = v; try { if (v) localStorage.setItem(GWHO_KEY, v); else localStorage.removeItem(GWHO_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
+const gWhoNow = () => gActive() ? gWho : '';
+function gReset() { gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; renderHomeGroup(); }
+// whoami・groupStatus の返事から、自分のグループ(名前・リーダーか・見られるか)を端末に控える(古い受け付けは group を返さない=何も変えない)
+function takeGroup(g) {
+  const ng = g ? { id: String(g.id || ''), name: String(g.name || ''), leader: !!g.leader, view: !!g.view } : null, before = JSON.stringify(auth && auth.group || null);
+  if (!auth || before === JSON.stringify(ng)) return;
+  if (!ng || !auth.group || auth.group.id !== ng.id) gview = null;
+  auth.group = ng; saveAuth(); renderHomeGroup(); renderScopeBar();
+}
+async function loadGview(force) {
+  if (!grpView() || !navigator.onLine || !configured()) return;
+  if (!force && gview && Date.now() - gview.at < GVIEW_MS) return;
+  if (!gviewP) gviewP = (async () => {
+    const r = await api('list', { scope: 'group' });
+    if (r.ok) { gview = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {}, at: Date.now() }; if (r.group) takeGroup({ ...r.group, view: true }); takeHomeCounts(r); }
+    else if (r.error === 'not_in_group' || r.error === 'card_no_group') { gview = null; takeGroup(null); }
+  })().finally(() => { gviewP = null; });
+  await gviewP; renderScopeBar(); renderActiveTab();
+}
+function renderGbar() {
+  const bar = document.getElementById('gbar'); if (!bar) return;
+  const tab = document.querySelector('.tab.active'), show = grpView() && !!tab && ['tab-list', 'tab-map', 'tab-stats', 'tab-sites'].includes(tab.id);
+  bar.classList.toggle('hidden', !show); if (!show) return;
+  $('#gbar-name').textContent = auth.group.name || '';
+  const sel = $('#gwho'), me = String(auth.recorderId || '');
+  if (!gview) { sel.innerHTML = '<option value="">全員</option>'; sel.disabled = true; $('#gwho-note').textContent = navigator.onLine ? 'グループの記録を読み込んでいます…' : '電波が無いので、この端末にある自分の記録だけを出しています。'; return; }
+  const people = whoPeople().filter(p => p.id !== me);
+  let cur = gWho; if (cur && cur !== 'me' && !people.some(p => p.id === cur)) cur = '';   // 覚えていた人の記録が今は無い時は「全員」で出す(覚えた物は消さない)
+  if (cur !== gWho) gWho = cur;
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">全員</option><option value="me">自分だけ</option>' + people.map(p => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
+  sel.value = cur;
+  $('#gwho-note').textContent = cur === 'me' ? 'いま:自分が入力した記録だけ' : cur ? `いま:${whoLabelOf(cur)} さんが入力した記録だけ` : 'いま:グループ全員の記録';
+}
+function renderHomeGroup() {
+  const sub = document.getElementById('home-group-sub'), bd = document.getElementById('home-group-badge'); if (!sub || !bd) return;
+  const g = auth && auth.group, pend = gstat && !gstat.group && gstat.pending, n = g && g.leader && gstat && gstat.group && gstat.group.requestCount || 0;
+  sub.textContent = g ? g.name + (g.leader ? '(リーダー)' : '') : pend ? '承認待ち' : '仲間と記録を分け合う';
+  bd.textContent = n ? `申し込み ${n}件` : ''; bd.classList.toggle('hidden', !n);
+  $opt('#home-group').setAttribute('aria-label', 'グループ' + (n ? `(参加の申し込み ${n}件)` : ''));
+}
+function takeGstat(r) { gstat = { ...r, at: Date.now() }; takeGroup(r.group ? { ...r.group, view: !!r.group.view } : null); renderHomeGroup(); }
+// ホームを開いた時: リーダーには申し込みの件数の印を出す(スマホへの通知は無い。アプリを開くと出る)
+async function refreshGstat(force) {
+  if (!loggedIn() || !navigator.onLine || !configured()) return;
+  if (!force && gstat && Date.now() - gstat.at < GSTAT_MS) return;
+  if (!gstatP) gstatP = api('groupStatus').then(r => { if (r.ok) takeGstat(r); return r; }).finally(() => { gstatP = null; });
+  return gstatP;
+}
+const joinLink = code => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}?join=${String(code || '').replace(/-/g, '')}`;
+const gIcon = (cls = 'lg') => `<svg class="ic ${cls}" aria-hidden="true"><use href="#i-group"/></svg>`;
+const gAsk = (act, id) => gconfirm && gconfirm.act === act && (id == null || gconfirm.id === id);
+function gConfirmHtml() {
+  const c = gconfirm, T = { remove: [`本当に ${c.name} さんを外しますか？`, 'これまでの記録はグループに残ります。もう一度入るには、参加用リンクから申し込みます。', '外す'],
+    leave: ['本当にグループを抜けますか？', 'これまでの記録はグループに残ります。抜けた後は、自分の記録だけが見えます。', '抜ける'],
+    newcode: ['本当にリンクを作り直しますか？', '前のリンクと参加コードは、すぐに使えなくなります。', '作り直す'] }[c.act];
+  return `<div class="gconfirm" role="alertdialog" aria-label="${esc(T[0])}"><p><b>${esc(T[0])}</b></p><p class="note">${esc(T[1])}</p><div class="row2"><button type="button" class="danger" data-g="yes">はい、${esc(T[2])}</button><button type="button" data-g="no">やめる</button></div></div>`;
+}
+async function renderGroup(fresh = true) {
+  const el = document.getElementById('group'); if (!el) return;
+  if (fresh) {
+    if (!navigator.onLine) { el.innerHTML = '<div class="card"><p class="warn">電波がありません。グループの画面は、電波のある所で開いてください。</p><p class="note">記録は今までどおり入れられます。</p></div>'; return; }
+    if (!gstat) el.innerHTML = '<div class="card"><p class="note">読み込んでいます…</p></div>';
+    const r = await refreshGstat(true);
+    if (!r || !r.ok) { el.innerHTML = `<div class="card"><p class="warn">${esc(errText(r && r.error))}</p><button type="button" class="wide" data-g="reload">もう一度読み込む</button></div>`; return; }
+  }
+  const s = gstat || {}, g = s.group;
+  if (!g && s.pending) {
+    el.innerHTML = `<div class="card wait">${gIcon('xl')}<p class="big">承認待ちです</p><div class="gname">${esc(s.pending.groupName)}</div><p>リーダーが承認すると、グループの記録が見られます。</p></div>
+<p class="note center">それまでは、今までどおり自分の記録が使えます。</p><button type="button" class="wide" data-g="cancel">申し込みを取り消す</button>`;
+    return;
+  }
+  if (!g) {
+    el.innerHTML = `<div class="card"><h3>グループに入っていません</h3><p class="note">グループに入ると、仲間の記録・えさ場・地図・集計をみんなで見られます。入らなくても、今までどおり自分の記録は使えます。</p>
+${s.canCreate ? (gcreate ? '' : '<button type="button" class="act orange" data-g="create-open">グループを作る<small>あなたがリーダーになります</small></button>') : '<p class="note">グループを作れるのは、Google でログインした人だけです(ログインカードの人も、参加用リンクから入れます)。</p>'}</div>
+<div class="card"><h3>グループに入るには</h3><p class="note">参加用リンクを受け取ったら、<b>そのリンクを押してください。</b></p></div>
+${s.canCreate && gcreate ? `<div class="card" id="gcreate"><h3>グループを作る</h3><label class="fl">グループの名前<input type="text" id="g-name" maxlength="20" autocomplete="off" enterkeyhint="done"></label><p class="note">名前は、あとから参加する人にも見えます(20字まで)。</p><button type="button" class="primary" data-g="create">作る</button><button type="button" class="wide" data-g="create-cancel">やめる</button></div>` : ''}`;
+    return;
+  }
+  const members = (g.members || []).slice().sort((a, b) => (b.leader - a.leader) || (b.me ? 1 : 0) - (a.me ? 1 : 0));
+  const memHtml = m => `<div class="mem"><span class="nm">${esc(m.name)}${m.leader ? '<span class="lead">リーダー</span>' : ''}${m.me && !m.leader ? '<span class="metag">自分</span>' : ''}${m.card ? ' <small class="note">(カード)</small>' : ''}</span>${g.leader && !m.leader && !gAsk('remove', m.id) ? `<button type="button" class="small" data-g="remove" data-id="${esc(m.id)}" data-name="${esc(m.name)}">外す</button>` : ''}</div>${g.leader && gAsk('remove', m.id) ? gConfirmHtml() : ''}`;
+  const memCard = `<div class="card"><h3>メンバー(${g.memberCount || members.length}人)</h3>${members.map(memHtml).join('')}<p class="note">メールアドレスは、だれにも見えません。名前だけが見えます。</p></div>`;
+  if (g.leader) {
+    const link = joinLink(g.code), reqs = g.requests || [];
+    el.innerHTML = `<div class="card banner">${gIcon()}<div><div class="t">あなたはリーダーです</div><div class="g">${esc(g.name)}</div></div></div>
+<div class="card"><h3>仲間を呼ぶ</h3><button type="button" class="act orange" data-g="copy">参加用リンクをコピー<small>LINE などで送ってください</small></button>
+${gcopyFail ? `<div class="gcopy"><p class="note">この端末ではコピーできませんでした。下のリンクを長押しして選び、コピーしてください。</p><input type="text" id="g-link" readonly value="${esc(link)}" aria-label="参加用リンク"></div>` : ''}
+<p class="codebox">参加コード <b id="g-code">${esc(g.code || '')}</b></p>${gAsk('newcode') ? gConfirmHtml() : '<button type="button" class="wide" data-g="newcode">リンクを作り直す</button>'}<p class="note">作り直すと、前のリンクは使えなくなります。</p></div>
+${reqs.length ? `<div class="card greq"><h3>参加の申し込み <span class="gbadge">${reqs.length}件</span></h3>${reqs.map(q => `<div class="mem"><span class="nm">${esc(q.name)}</span></div><div class="row2"><button type="button" class="small gyes" data-g="approve" data-id="${esc(q.id)}">承認</button><button type="button" class="small" data-g="decline" data-id="${esc(q.id)}">断る</button></div>`).join('')}</div>` : ''}
+${memCard}`;
+    if (gcopyFail) { const i = $('#g-link'); i.onfocus = () => i.select(); }
+    return;
+  }
+  el.innerHTML = `<div class="card banner">${gIcon()}<div><div class="t">グループに入っています</div><div class="g">${esc(g.name)}</div></div></div>
+${memCard}<p class="note">${g.view ? 'グループの記録は、一覧・地図・集計・えさ場で見られます。' : 'ログインカードの人は、記録がグループに入ります。見えるのは、今までどおり自分の記録だけです。'}</p>
+${gAsk('leave') ? gConfirmHtml() : '<button type="button" class="wide danger" data-g="leave">グループを抜ける</button>'}`;
+}
+// グループの操作(押した時だけ・電波が要る)。二度押し・送り直しは同じ reqId(受け付けが already_done にする)
+async function groupAct(action, extra = {}) {
+  if (!navigator.onLine) return toast(WEAK_TEXT_TRY, 5000);
+  const key = action + JSON.stringify(extra); if (!gReq || gReq.key !== key) gReq = { key, id: newId('g') };
+  const r = await api(action, { ...extra, reqId: gReq.id });
+  if (!noAnswer(r.error)) gReq = null;
+  if (r.ok) { gconfirm = null; gcreate = false; gcopyFail = false; gview = null; if (r.status) takeGstat(r.status); else await refreshGstat(true); renderGroup(false); return r; }
+  if (r.error === 'already_done') { await refreshGstat(true); renderGroup(false); return r; }
+  toast(errText(r.error), 6000); if (['not_leader', 'not_in_group', 'not_found', 'requester_in_group'].includes(r.error)) { gconfirm = null; renderGroup(true); }
+  return r;
+}
+async function copyJoin(btn) {
+  const g = gstat && gstat.group; if (!g || !g.code) return;
+  const link = joinLink(g.code); let done = false;
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(link); done = true; } } catch { done = false; }
+  if (!done) { try { const t = document.createElement('textarea'); t.value = link; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(t); t.select(); done = document.execCommand('copy'); t.remove(); } catch { done = false; } }
+  if (done) { gcopyFail = false; toast('参加用リンクをコピーしました。LINE などで送ってください', 4000); }
+  else { gcopyFail = true; renderGroup(false); const i = $('#g-link'); if (i) { i.focus(); i.select(); } }
+}
+function onGroupClick(e) {
+  const b = e.target.closest('button[data-g]'); if (!b) return; const a = b.dataset.g;
+  if (a === 'reload') return renderGroup(true);
+  if (a === 'create-open') { gcreate = true; renderGroup(false); const i = $('#g-name'); if (i) i.focus(); return; }
+  if (a === 'create-cancel') { gcreate = false; return renderGroup(false); }
+  if (a === 'create') { const n = ($('#g-name').value || '').replace(/\s+/g, ' ').trim(); if (!n) return toast('グループの名前を入れてください', 4000); if (n.length > 20) return toast('グループの名前は20字までです', 4000); return busy(b, () => groupAct('groupCreate', { name: n }), '作っています…'); }
+  if (a === 'copy') return copyJoin(b);
+  if (a === 'newcode') { gconfirm = { act: 'newcode' }; return renderGroup(false); }
+  if (a === 'remove') { gconfirm = { act: 'remove', id: b.dataset.id, name: b.dataset.name }; return renderGroup(false); }
+  if (a === 'leave') { gconfirm = { act: 'leave' }; return renderGroup(false); }
+  if (a === 'no') { gconfirm = null; return renderGroup(false); }
+  if (a === 'yes' && gconfirm) { const c = gconfirm; return busy(b, () => c.act === 'remove' ? groupAct('groupRemove', { memberId: c.id }) : c.act === 'leave' ? groupAct('groupLeave') : groupAct('groupNewCode')); }
+  if (a === 'approve') return busy(b, () => groupAct('groupApprove', { requestId: b.dataset.id }), '承認しています…');
+  if (a === 'decline') return busy(b, () => groupAct('groupDecline', { requestId: b.dataset.id }), '断っています…');
+  if (a === 'cancel') return busy(b, () => groupAct('groupCancel'), '取り消しています…');
+}
+// ---- 参加用リンク(?join=コード)----
+// 開いたら、コードを覚えて URL から消す(戻る・共有に残さない)。ログインしていなければ、ログインの後に同じ画面へ。
+// ホーム画面のアプリ(PWA)で開いても、ブラウザで開いても同じ(どちらも ?join= で起動する)
+function readJoinFromUrl() {
+  let q; try { q = new URLSearchParams(location.search); } catch { return false; }
+  if (!q.has('join')) return false;
+  const c = String(q.get('join') || '').trim().slice(0, 32); q.delete('join');
+  try { history.replaceState(history.state, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash); } catch { /* 消せない時も先へ */ }
+  joinCode = c || '-'; try { sessionStorage.setItem(JOIN_KEY, joinCode); } catch { /* */ }
+  return true;
+}
+function clearJoin() { joinCode = ''; try { sessionStorage.removeItem(JOIN_KEY); } catch { /* */ } renderJoinNote(); }
+function renderJoinNote() { const n = document.getElementById('joinnote'); if (n) n.classList.toggle('hidden', !(joinCode && !loggedIn())); }
+const JOIN_BAD = '<div class="card ask"><p><b>このリンクは使えません。</b></p><p>リーダーに新しいリンクを頼んでください。</p><button type="button" class="wide" data-j="home">ホームへ</button></div>';
+async function renderJoin() {
+  const el = document.getElementById('join'); if (!el) return;
+  if (!joinCode) { el.innerHTML = '<div class="card"><p>参加用リンクの情報がありません。リーダーから受け取ったリンクを、もう一度押してください。</p><button type="button" class="wide" data-j="home">ホームへ</button></div>'; return; }
+  if (!/^[A-Za-z0-9-]{8,12}$/.test(joinCode)) { el.innerHTML = JOIN_BAD; clearJoin(); return; }
+  if (!navigator.onLine) { el.innerHTML = `<div class="card"><p class="warn">電波がありません。</p><p class="note">電波のある所で「もう一度確かめる」を押してください。</p><button type="button" class="wide" data-j="retry">もう一度確かめる</button></div>`; return; }
+  el.innerHTML = '<div class="card"><p class="note">参加用リンクを確かめています…</p></div>';
+  const r = await api('groupPeek', { code: joinCode });
+  if (r.ok) {
+    el.innerHTML = `<div class="card ask">${gIcon('xl')}<p>グループから、お誘いのリンクが届いています。</p><div class="gname">${esc(r.groupName)}</div><p>に参加を申し込みますか？</p>
+<button type="button" class="primary" data-j="apply" style="margin-top:16px">申し込む</button><button type="button" class="wide" data-j="stop">やめる</button></div>
+<p class="note center">リーダーがアプリを開くと、申し込みが表示されます。</p>`;
+    return;
+  }
+  if (r.error === 'already_in_group') { el.innerHTML = `<div class="card ask">${gIcon('xl')}<p>すでに</p><div class="gname">${esc(r.groupName || '')}</div><p>に入っています。</p><button type="button" class="wide" data-j="group">グループの画面へ</button></div>`; clearJoin(); return; }
+  if (r.error === 'already_requested') { clearJoin(); toast('すでに参加を申し込んでいます(承認待ち)', 4000); gstat = null; showTab('group'); return; }
+  if (r.error === 'not_found' || r.error === 'bad_code') { el.innerHTML = JOIN_BAD; clearJoin(); return; }
+  if (noAnswer(r.error)) { el.innerHTML = `<div class="card"><p class="warn">${esc(errText(r.error))}</p><button type="button" class="wide" data-j="retry">もう一度確かめる</button></div>`; return; }
+  el.innerHTML = `<div class="card"><p class="warn">${esc(errText(r.error))}</p><button type="button" class="wide" data-j="home">ホームへ</button></div>`; clearJoin();
+}
+async function onJoinClick(e) {
+  const b = e.target.closest('button[data-j]'); if (!b) return; const a = b.dataset.j;
+  if (a === 'home' || a === 'stop') { clearJoin(); return showTab('home'); }
+  if (a === 'group') return showTab('group');
+  if (a === 'retry') return renderJoin();
+  if (a === 'apply') return busy(b, async () => {
+    if (!gReq || gReq.key !== 'join' + joinCode) gReq = { key: 'join' + joinCode, id: newId('g') };
+    const r = await api('groupJoin', { code: joinCode, reqId: gReq.id });
+    if (!noAnswer(r.error)) gReq = null;
+    if (r.ok || r.error === 'already_done' || r.error === 'already_requested') { clearJoin(); gstat = null; showTab('group'); return; }
+    if (r.error === 'not_found') { $('#join').innerHTML = JOIN_BAD; clearJoin(); return; }
+    toast(errText(r.error), 6000);
+  }, '申し込んでいます…');
+}
 
 // ---- 一覧 ----
 let listFilter = 'all', listUrls = [];   // 2026-10-26 0002: 開いた時は「すべて」(未送信は上の件数の印と、切り替えで見る)
@@ -1104,7 +1326,7 @@ let listChip = 'all', listOpen = new Set(), listOpenInit = false;
 const LCHIPS = [['all', 'すべて', r => true], ['ear', 'さくら耳 あり', r => hasEar(r)], ['noear', 'さくら耳 なし', r => r.ear === 'なし'], ['pet', '飼い猫の可能性', r => effPet(r) === 'あり'], ['gone', 'いなくなった', r => isGone(r)]];
 async function renderList() {
   listUrls.forEach(u => URL.revokeObjectURL(u)); listUrls = [];
-  const all = scope === 'all';
+  const all = scope === 'all', wv = wide();
   const sm = new Map((await viewAllSites()).map(x => [x.id, x])), every = await viewAllRecords();
   const live = every.filter(r => (all ? !r.deleted || (showDeleted && auth.admin) : !r.deleted));
   const present = live.filter(r => !isGone(r) || r.deleted);
@@ -1115,22 +1337,22 @@ async function renderList() {
   // 自分の記録の時だけ: 送れていない記録があれば「送る」(ホームの「送る」と同じ)・取り直し(v25 までの機能を残す)
   $('#listmine').classList.toggle('hidden', all); $opt('#listrefresh').classList.toggle('hidden', all);
   $('#btn-send').classList.toggle('hidden', all || !/\d/.test($('#pending').textContent));
-  const gone = all ? [] : every.filter(canRestore).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));   // 自分が削除した物(30日の間)
+  const gone = all ? [] : every.filter(x => x.mine !== false && canRestore(x)).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));   // 自分が削除した物(30日の間)
   const itemHtml = r => {
     let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); listUrls.push(u); img = `<img src="${u}" class="zoomable" data-zoom-id="${esc(r.id)}" alt="写真(押すと大きく見られます)">`; }
     else if (phNeeds(r)) img = rphHtml(r, 1).replace('class="rph"', `class="rph" data-rph-count="${Number(r.photoCount)}"`);   // 他の端末の記録: 見えたら受け付けから小さい版を取る(1800)
     const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : '');
-    const st = all ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
+    const st = all || (wv && (r.mine === false || !r.status)) ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
     return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''} さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}<br>
     <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br>
-    ${st} ${esc(r.feature || '')}${!all && !r.deleted ? `<br><button type="button" class="small chgbtn" data-change="${esc(r.id)}"><svg class="ic sm" aria-hidden="true"><use href="#i-change"/></svg>この猫の状態を変える</button>` : ''}</div></div>`; };
+    ${st} ${esc(r.feature || '')}${!all && !r.deleted && (!wv || (r.mine !== false && r.status)) ? `<br><button type="button" class="small chgbtn" data-change="${esc(r.id)}"><svg class="ic sm" aria-hidden="true"><use href="#i-change"/></svg>この猫の状態を変える</button>` : ''}</div></div>`; };
   if (!listOpenInit && rs.length) { listOpenInit = true; listOpen.add(rs[0].siteId || ''); }   // 初めて開いた時は、いちばん新しい猫のいるえさ場を開いておく(状態を変えるまでが2回で済む)
   const groups = new Map();   // えさ場の id → 猫(えさ場が消えた/見つからない物も、その名前の組に入れる)
   rs.forEach(r => { const k = r.siteId || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
   const keys = [...groups.keys()].sort((a, b) => a === '' ? 1 : b === '' ? -1 : siteNameOf(a, sm).localeCompare(siteNameOf(b, sm), 'ja'));
   const gHtml = k => { const list = groups.get(k), name = k ? siteNameOf(k, sm) : 'えさ場なし';
     return `<details class="sgroup${k ? '' : ' sgnone'}" data-gk="${esc(k)}"${listOpen.has(k) ? ' open' : ''}><summary>${k ? '<span class="siteicon sm" aria-hidden="true"></span>' : '<svg class="ic md" aria-hidden="true"><use href="#i-map"/></svg>'}<span class="sgname">${esc(name)}</span><span class="sgn">${list.length}頭</span><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg></summary><div class="sgbody">${list.map(itemHtml).join('')}</div></details>`; };
-  $('#list').innerHTML = (rs.length ? keys.map(gHtml).join('') : `<p>${listChip === 'all' ? (all && whoPick ? 'この人の記録はありません' : '記録はまだありません') : '当てはまる猫はいません'}</p>`)
+  $('#list').innerHTML = (rs.length ? keys.map(gHtml).join('') : `<p>${listChip === 'all' ? ((all && whoPick) || gWhoNow() ? 'この人の記録はありません' : '記録はまだありません') : '当てはまる猫はいません'}</p>`)
     + (gone.length ? `<details class="card gonebox"><summary>削除したもの(${gone.length}件)</summary><p class="note">削除してから30日の間は、元に戻せます。</p>${gone.map(r => `<div class="item gone"><div><b>${esc(colorText(r))}</b> さくら耳:${esc(r.ear)} ${delMark(r)}<br><span class="note">${fmt(r.time)}</span><br><button type="button" class="small" data-restore="${esc(r.id)}">元に戻す</button></div></div>`).join('')}</details>` : '');
   phWatch($('#list'));
 }
@@ -1209,9 +1431,9 @@ async function renderMap() {
   const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x])), rsAll = await viewRecords(), withCat = new Set(rsAll.map(r => r.siteId).filter(Boolean));
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
   rsAll.filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${colorText(r)}` })
-    .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
+    .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${wide() && (scope === 'all' || r.mine === false || !r.status) ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
   liveSites(sites).filter(x => byWho(x) || withCat.has(x.id)).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
-    .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${scope === 'all' && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
+    .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${wide() && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
 }
 
@@ -1233,7 +1455,7 @@ function statTable(title, head, rows) {
     <p class="note">さくら耳ありの割合 = さくら耳ありの頭数 ÷(今いる猫 − さくら耳 確認できず)。確認できなかった猫は割合の計算に入れていません。手術済み = 不妊手術が「済み」の猫(さくら耳が右か左の猫と、耳の印が無くても手術済みと分かった猫)。手術済みの割合 = 手術済みの頭数 ÷(今いる猫 − 手術が「分からない」猫)。いなくなった猫は「いなくなった(頭)」の列だけに数えます。</p>` : '<p>まだ記録がありません</p>'}</div>`;
 }
 async function renderStats() {
-  const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? (whoPick ? whoLabelOf(whoPick) : '全員') : '自分';
+  const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? (grpNow() ? (grpNow() === AGRP_NONE ? 'グループなしの' : grpNames()[grpNow()] + ' の') : '') + (whoPick ? whoLabelOf(whoPick) : '全員') : gActive() ? (gWhoNow() === 'me' ? '自分' : gWhoNow() ? whoLabelOf(gWhoNow()) : 'グループ全員') : '自分';
   const bySite = [...tally(rs, r => r.siteId || '').entries()].map(([k, a]) => [k ? siteNameOf(k, sm) + (sm.get(k) && sm.get(k).retired ? '(使っていない)' : '') : NO_SITE_ROW, a]).sort((a, b) => (a[0] === NO_SITE_ROW) - (b[0] === NO_SITE_ROW) || a[0].localeCompare(b[0], 'ja'));
   const byMesh = [...tally(rs, meshOf).entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, a]) => [meshLabel(k), a]);
   const gr = new Map(); rs.filter(isGone).forEach(r => { const k = goneReasonText(r.goneReason) || '理由なし'; gr.set(k, (gr.get(k) || 0) + 1); });
@@ -1245,17 +1467,17 @@ async function renderStats() {
 
 // ---- えさ場の画面 ----
 async function renderSites() {
-  const all = scope === 'all', rs = await viewRecords(), cnt = new Map();
+  const all = scope === 'all', g = !all && gActive(), rs = await viewRecords(), cnt = new Map();
   rs.forEach(r => { if (r.siteId) cnt.set(r.siteId, (cnt.get(r.siteId) || 0) + 1); });
   const every = (await viewAllSites()).filter(x => byWho(x) || cnt.has(x.id)), sites = every.filter(x => !x.deleted);   // 入力した人を選んでいる時: その人が登録したえさ場と、その人の猫がいるえさ場
   $('#sitehead').classList.toggle('hidden', all);
   const card = x => {
-    const own = !all || x.mine !== false, pend = x.status === 'pending' ? '未送信' : (x.ops || []).length ? '送信待ちの直しあり' : '送信済み';
+    const own = (!all && !g) || x.mine !== false, pend = x.status === 'pending' ? '未送信' : (x.ops || []).length ? '送信待ちの直しあり' : '送信済み';
     return `<div class="card site" data-id="${esc(x.id)}"><b>${esc(x.name)}</b>${x.retired ? ' <span class="mark">使っていない</span>' : ''}${x.memo ? `<br><span class="note">${esc(x.memo)}</span>` : ''}
-    <br><span class="note">この場所の記録 ${cnt.get(x.id) || 0}件・メッシュ ${esc(x.mesh500 || '')}${all && !own ? '・' + esc(whoText(x)) : ''}</span>${all ? '' : `<br><span class="st ${x.status === 'sent' && !(x.ops || []).length ? 'sent' : ''}">${pend}</span>`}
+    <br><span class="note">この場所の記録 ${cnt.get(x.id) || 0}件・メッシュ ${esc(x.mesh500 || '')}${(all || g) && !own ? '・' + esc(whoText(x)) : ''}</span>${all || !own ? '' : `<br><span class="st ${x.status === 'sent' && !(x.ops || []).length ? 'sent' : ''}">${pend}</span>`}
     <div class="row">${own && !all ? `<button type="button" class="small" data-act="rename">名前を直す</button><button type="button" class="small" data-act="${x.retired ? 'restore' : 'retire'}">${x.retired ? 'また使う' : '使わない'}</button><button type="button" class="small danger" data-act="del">削除</button>` : ''}<button type="button" class="small" data-act="map">地図で見る</button></div></div>`; };
   // 削除したえさ場: 自分の物(30日の間)。管理者が「削除済みも見る」にした時は、全員の物も出る
-  const gone = every.filter(x => x.deleted && (all ? showDeleted && auth.admin : canRestore(x))).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));
+  const gone = every.filter(x => x.deleted && (all ? showDeleted && auth.admin : x.mine !== false && canRestore(x))).sort((a, b) => tms(b.deletedAt) - tms(a.deletedAt));
   const goneCard = x => `<div class="card site gone" data-id="${esc(x.id)}" data-owner="${esc(x.mine === false ? x.recorderId : '')}"><b>${esc(x.name)}</b> ${delMark(x)}${all && x.mine === false ? `<br><span class="note">${esc(whoText(x))}</span>` : ''}
     <div class="row">${canRestore(x) ? '<button type="button" class="small" data-act="undel">元に戻す</button>' : '<span class="note">30日を過ぎたので戻せません</span>'}</div></div>`;
   const live = liveSites(sites).sort((a, b) => a.name.localeCompare(b.name, 'ja')), off = sites.filter(x => x.retired).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
@@ -1365,7 +1587,7 @@ function phDb() {
 const phTx = (mode, fn) => phDb().then(db => new Promise((ok, ng) => { const t = db.transaction(PH_STORE, mode), r = fn(t.objectStore(PH_STORE)); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(t.error); }));
 const phMaxItems = () => { const n = Number(localStorage.getItem('catSurvey.phMaxItems')); return n > 0 ? n : PH_MAX_ITEMS; };   // 試し用に上限を小さくできる(ふだんは使わない)
 // 誰の記録か: 全員の記録の中の他の人の物だけ ownerId を付ける(自分の物は付けない=受け付けがログインから決める)
-const phRef = r => ({ id: String(r.id), owner: scope === 'all' && r.mine === false && r.recorderId ? String(r.recorderId) : '' });
+const phRef = r => ({ id: String(r.id), owner: wide() && r.mine === false && r.recorderId ? String(r.recorderId) : '' });
 const phKey = (ref, n, size) => [auth && auth.recorderId || '', ref.owner, ref.id, n, size].join('|');   // ログインした人ごとに分ける(同じ端末で別の人がログインしても、前の人の控えは出ない)
 const phNeeds = r => !(r.photos && r.photos.length) && Number(r.photoCount) > 0 && r.status !== 'pending';
 async function phGet(k) {
@@ -1560,7 +1782,7 @@ const rowLine = (label, v) => v ? `<div class="line2"><span class="lbl">${esc(la
 
 async function openDetail(id) {
   const r = await recById(id); if (!r) return; sheetId = id;
-  const sm = new Map((await viewSites()).map(x => [x.id, x])), all = scope === 'all';
+  const sm = new Map((await viewSites()).map(x => [x.id, x])), all = wide();
   let img = ''; if (r.photos && r.photos[0]) {   // 2026-10-26 1355: 押すと大きく見られる(2枚目からは小さな絵を並べる)
     const us = r.photos.map(p => { const u = URL.createObjectURL(p); sheetUrls.push(u); return u; });
     img = `<img class="dphoto zoomable" src="${us[0]}" data-zoom="0" alt="写真1(押すと大きく見られます)" role="button" tabindex="0">` + (us.length > 1 ? `<div class="dthumbs">${us.map((u, i) => `<img src="${u}" class="zoomable" data-zoom="${i}" alt="写真${i + 1}(押すと大きく見られます)" role="button" tabindex="0">`).join('')}</div>` : '') + '<p class="note">写真を押すと、大きく見られます。</p>';
@@ -1653,7 +1875,7 @@ async function openEdit(id) {
   delete st.color; splitColor(r.color, st); st.hairLen = effHair(r);   // 「その他:〇〇」は「その他」と欄の文字に分けて出す・毛の長さが空の前の記録は「分からない」
   st.petReasons = [...(r.petReasons || [])]; st.petOther = r.petOther || ''; st.siteId = r.siteId || '';
   st.neuter = effNeuter(r);   // 空の古い記録は、今の数え方の値を選んだ形で出す(変えなければ送らない)
-  const sites = await allSites(), here = siteCands(sites, r), curSite = sites.find(x => x.id === r.siteId);
+  const sites = await pickSites(), here = siteCands(sites, r), curSite = sites.find(x => x.id === r.siteId);
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>間違いを直す</b></div>
   <div class="sheetbody"><div class="warn">入力をまちがえた所だけ直してください。この記録がそのまま書き換わり、シートに「直した日時」が残ります。<br>写真と場所は、ここでは直せません。猫の状態が変わったときは、「状態が変わった」を使ってください。</div>
   <div class="card"><h3>えさ場</h3><p class="hint">この猫が来ているえさ場(自分のえさ場だけ。この記録の場所から近い順。100mより遠いえさ場も下の「そのほかの自分のえさ場」から選べます)</p><select id="e-site" class="sitesel" aria-label="えさ場"></select></div>
@@ -1696,7 +1918,7 @@ const getPos = () => new Promise(ok => navigator.geolocation ? navigator.geoloca
 async function openChange(id) {
   const r = await getRecord(id); if (!r || r.status !== 'sent') return;
   const st = {}, cur = {}; CHANGE_ITEMS.forEach(k => { cur[k] = r[k] || ''; }); cur.neuter = effNeuter(r); cur.hairLen = effHair(r);
-  const sites = await allSites(), sm = new Map(sites.map(x => [x.id, x])), curSite = r.siteId || '';
+  const sites = await pickSites(), sm = new Map(sites.map(x => [x.id, x])), curSite = r.siteId || '';
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>状態が変わった</b></div>
   <div class="sheetbody"><div class="warn">変わった項目だけ選んでください。選ばなかった項目は、そのままです。<br>記録は書き換えず、「いつ・何が変わったか」を履歴に足します。日時は今の時刻が自動で入ります。<br>手術が済んだと分かったときは、「不妊手術」の「済み」を選んでください(さくら耳が付いていれば、さくら耳の右か左も)。</div>
   <div id="c-fields"></div>
@@ -1792,6 +2014,7 @@ async function renderAdmin() {
     ${people.length ? `<div class="card pfind"><label class="fl">名前か ID で探す<input id="ad-q" type="search" autocomplete="off" placeholder="名前か ID の一部" value="${esc(adminFind.q)}"></label>
       <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
+    <div id="ad-groups"></div>
     <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
@@ -1800,7 +2023,82 @@ async function renderAdmin() {
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
   adminPeople = people;
   if ($('#ad-q')) { $('#ad-q').oninput = () => { adminFind.q = $('#ad-q').value; adminFilter(); }; $('#ad-pick').onchange = () => { adminFind.pick = $('#ad-pick').value; adminFilter(); }; adminFilter(); }
+  agConfirm = null; await loadAdminGroups();
 }
+// ---- 管理の画面の「グループ」(2026-10-28 その3。管理者だけ。受け付けも毎回「管理者か」で照らす)----
+// 一覧(名前・リーダー・人数・記録数)・リーダーを替える(メンバーの Google の人から)・外す・グループを消す・今までの記録をまとめて移す。
+// 消す・移す・替える・外すは、画面の中に「本当に〜しますか？」を出し、「はい、〜」を押した時だけ行う(移すは件数を数えてから)。一覧はプルダウン+検索(人の一覧と同じ形)
+let agData = null, agFind = { q: '', pick: '' }, agConfirm = null;
+async function loadAdminGroups() {
+  const box = document.querySelector('#ad-groups'); if (!box) return;
+  const r = await api('adminGroupList');
+  if (!r.ok) { agData = null; box.innerHTML = r.error === 'unknown_action' ? '' : `<h3 class="listhead">グループ</h3><div class="card"><p class="warn">${esc(errText(r.error))}</p><button type="button" class="small" data-ag="reload">読み直す</button></div>`; return; }   // 古い受け付けには無い(何も出さない)
+  agData = r; renderAdminGroups();
+}
+function agConfirmHtml(g) {
+  const c = agConfirm; if (!c || c.gid !== g.id) return '';
+  const n = c.n || { records: 0, sites: 0 };   // 件数は「移す」の時だけある(ほかの確かめの時も、文の表を作るので読めるようにする)
+  const T = { leader: [`本当に ${c.name} さんをリーダーにしますか？`, `いまのリーダー(${g.leaderName} さん)は、メンバーのまま残ります。`, 'リーダーにする'],
+    remove: [`本当に ${c.name} さんを外しますか？`, 'これまでの記録はグループに残ります。外れた人には、自分の記録だけが見えます。', '外す'],
+    del: [`本当に「${g.name}」を消しますか？(記録 ${g.recordCount}件)`, `記録とえさ場は消えず、「グループなし」に戻ります。メンバー ${g.memberCount}人も、グループなしになります。グループは元には戻せません。`, '消す'],
+    move: [`本当に ${c.name} さんの今までの記録を「${g.name}」に移しますか？(記録 ${n.records}件・えさ場 ${n.sites}件)`, 'どのグループにも入っていない記録とえさ場だけを移します。ほかのグループの記録と、削除した記録は移しません。移すと、グループの人に見えるようになります。', '移す'] }[c.act];
+  return `<div class="gconfirm" role="alertdialog" aria-label="${esc(T[0])}"><p><b>${esc(T[0])}</b></p><p class="note">${esc(T[1])}</p><div class="row2"><button type="button" class="danger" data-ag="yes">はい、${esc(T[2])}</button><button type="button" data-ag="no">やめる</button></div></div>`;
+}
+function renderAdminGroups() {
+  const box = document.querySelector('#ad-groups'); if (!box || !agData) return;
+  const gs = agData.groups.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const one = g => {
+    const cands = g.members.filter(m => !m.leader && !m.card);
+    const mem = g.members.slice().sort((a, b) => b.leader - a.leader || a.name.localeCompare(b.name, 'ja')).map(m => `<div class="agm"><span class="agmn">${esc(m.name)}${m.leader ? '<span class="mark edit">リーダー</span>' : ''}${m.card ? '<span class="mark chg">カード</span>' : ''}</span>
+      <span class="row">${m.leader ? '' : `<button type="button" class="small" data-ag="remove" data-mid="${esc(m.id)}">外す</button>`}<button type="button" class="small" data-ag="move" data-mid="${esc(m.id)}">今までの記録を移す</button></span></div>`).join('');
+    return `<div class="card person agroup" data-gid="${esc(g.id)}"><div class="ptop"><b class="pname">${esc(g.name)}</b>${g.state ? `<span class="mark del">${esc(g.state)}</span>` : ''}</div>
+      <div class="note">リーダー: <b>${esc(g.leaderName)}</b>・人数: ${g.memberCount}人・記録: ${g.recordCount}件・えさ場: ${g.siteCount}か所</div>
+      ${cands.length ? `<label class="fl">リーダーを替える<select class="wide" data-ag="leader-sel" aria-label="新しいリーダー"><option value="">(メンバーから選ぶ)</option>${cands.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></label><button type="button" class="small" data-ag="leader">この人をリーダーにする</button>` : '<p class="note">リーダーを替えるには、Google のメンバーがもう1人要ります(カードの人はリーダーになれません)。</p>'}
+      <div class="agms">${mem}</div>
+      ${agConfirmHtml(g)}
+      <button type="button" class="wide danger" data-ag="del">グループを消す…</button></div>`; };
+  box.innerHTML = `<h3 class="listhead">グループ(${gs.length})</h3>
+    ${gs.length ? `<div class="card pfind"><label class="fl">グループの名前で探す<input id="ag-q" type="search" autocomplete="off" placeholder="名前の一部" value="${esc(agFind.q)}"></label>
+      <label class="fl">グループを選ぶ<select id="ag-pick" class="wide" aria-label="グループを選ぶ"></select></label><p id="ag-found" class="note" aria-live="polite"></p></div>` : ''}
+    <div id="ag-list">${gs.map(one).join('') || '<div class="card"><p class="note">まだグループはありません(グループは、Google の人がアプリのグループの画面で作ります)。</p></div>'}</div>
+    <div class="card"><p class="note">どのグループにも入っていない記録: ${agData.noGroupRecords}件。グループを消しても、記録とえさ場は消えません。リーダーは外せないので、先にリーダーを替えます。グループの管理の操作は、シートの「管理の記録」に残ります。</p></div>`;
+  if (document.querySelector('#ag-q')) { $('#ag-q').oninput = () => { agFind.q = $('#ag-q').value; agFilter(); }; $('#ag-pick').onchange = () => { agFind.pick = $('#ag-pick').value; agFilter(); }; agFilter(); }
+  const cb = document.querySelector('#ad-groups .gconfirm'); if (cb) cb.scrollIntoView({ block: 'nearest' });
+}
+function agFilter() {
+  const sel = document.querySelector('#ag-pick'); if (!sel || !agData) return;
+  const q = agFind.q.replace(/\s+/g, ' ').trim().toLowerCase(), all = agData.groups.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja')), shown = all.filter(g => !q || g.name.toLowerCase().includes(q));
+  if (agFind.pick && !shown.some(g => g.id === agFind.pick)) agFind.pick = '';
+  sel.innerHTML = `<option value="">${q ? `見つかったグループすべて(${shown.length})` : `すべて(${shown.length})`}</option>` + shown.map(g => `<option value="${esc(g.id)}">${esc(g.name)}(${g.memberCount}人)</option>`).join('');
+  sel.value = agFind.pick;
+  const ids = new Set(agFind.pick ? [agFind.pick] : shown.map(g => g.id));
+  document.querySelectorAll('#ag-list .agroup').forEach(el => { el.hidden = !ids.has(el.dataset.gid); });
+  $('#ag-found').textContent = q || agFind.pick ? `${all.length}のうち ${ids.size}グループを出しています` : '';
+}
+async function agClick(b) {
+  const a = b.dataset.ag; if (a === 'reload') return loadAdminGroups();
+  if (a === 'no') { agConfirm = null; return renderAdminGroups(); }
+  const card = b.closest('.agroup'), g = card && agData && agData.groups.find(x => x.id === card.dataset.gid); if (!g) return;
+  const mem = id => g.members.find(m => m.id === id);
+  if (a === 'leader') { const id = card.querySelector('[data-ag=leader-sel]').value; if (!id) return toast('新しいリーダーをメンバーから選んでください', 4000); agConfirm = { act: 'leader', gid: g.id, mid: id, name: mem(id).name }; return renderAdminGroups(); }
+  if (a === 'remove') { agConfirm = { act: 'remove', gid: g.id, mid: b.dataset.mid, name: mem(b.dataset.mid).name }; return renderAdminGroups(); }
+  if (a === 'del') { agConfirm = { act: 'del', gid: g.id }; return renderAdminGroups(); }
+  if (a === 'move') {   // 先に数える(移さない)。0件なら確かめを出さない
+    const r = await api('adminGroupMove', { groupId: g.id, memberId: b.dataset.mid }); if (!r.ok) return agFail(r);
+    if (!r.records && !r.sites) { agConfirm = null; renderAdminGroups(); return toast(`${r.name} さんには、移す記録がありません(どのグループにも入っていない記録だけを移します)`, 6000); }
+    agConfirm = { act: 'move', gid: g.id, mid: b.dataset.mid, name: r.name, n: { records: r.records, sites: r.sites } }; return renderAdminGroups();
+  }
+  if (a === 'yes' && agConfirm && agConfirm.gid === g.id) {
+    const c = agConfirm, act = { leader: ['adminGroupLeader', { memberId: c.mid }], remove: ['adminGroupRemove', { memberId: c.mid }], del: ['adminGroupDelete', {}], move: ['adminGroupMove', { memberId: c.mid, expect: c.n }] }[c.act];
+    const r = await adminApi(act[0], { groupId: g.id, ...act[1] });
+    if (!r.ok) { if (r.error === 'count_changed') { agConfirm = { ...c, n: { records: r.records, sites: r.sites } }; renderAdminGroups(); return toast(`件数が変わりました(記録 ${r.records}件・えさ場 ${r.sites}件)。確かめてから、もう一度押してください`, 7000); } return agFail(r); }
+    agConfirm = null;
+    toast(c.act === 'leader' ? `${c.name} さんをリーダーにしました` : c.act === 'remove' ? `${c.name} さんを外しました` : c.act === 'del' ? `「${g.name}」を消しました。記録 ${r.records}件・えさ場 ${r.sites}件はグループなしに戻りました` : `記録 ${r.records}件・えさ場 ${r.sites}件を「${g.name}」に移しました`, 6000);
+    if (scope === 'all') { scope = 'mine'; allView = null; }   // 全員の記録の写しは古いので、次に開いた時に取り直す
+    return loadAdminGroups();
+  }
+}
+function agFail(r) { agConfirm = null; toast(r.error === 'already_done' ? 'この操作は、もう済んでいます(前に押した時の返事が届かなかったようです)' : errText(r.error), 6000); return loadAdminGroups(); }
 // 一覧の絞り込み(2026-10-28 0910): 検索の欄(名前か ID の一部)で、プルダウンの中身と一覧をその場で絞る。プルダウンで1人を選ぶと、その人だけ出す
 const pickLabel = x => x.name || (x.recorderId ? 'ID ' + String(x.recorderId).slice(0, 6) : x.masked || '(名前なし)');
 let adminPeople = [], adminFind = { q: '', pick: '' };
@@ -1877,6 +2175,7 @@ function onAdminClick(e) {
   return busy(b, () => adminClick(b, e));
 }
 async function adminClick(b, e) {
+  if (b.dataset.ag) return agClick(b);   // ★その3 グループの管理
   if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-bugs') return openBugAdmin();
   if (b.id === 'ad-add') {
@@ -1976,7 +2275,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v35';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v36';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2183,7 +2482,7 @@ async function demo() {
 }
 
 // 画面の名前(上の名前)と、下の4つ以外の画面(上に「← ホーム」が出る)
-const TITLES = { home: 'まちねこ帳 <small>試用版</small>', record: '猫を記録する', list: '記録の一覧', map: '地図', sites: 'えさ場', stats: '集計', settings: '設定', admin: '管理', bug: '不具合を知らせる' };
+const TITLES = { home: 'まちねこ帳 <small>試用版</small>', group: 'グループ', join: 'グループに参加', record: '猫を記録する', list: '記録の一覧', map: '地図', sites: 'えさ場', stats: '集計', settings: '設定', admin: '管理', bug: '不具合を知らせる' };
 const MAIN_TABS = ['home', 'record', 'list', 'map'];
 // 戻る: スマホの戻るボタン・端から払う操作は、ブラウザの履歴で受ける。下の4つの間の行き来は履歴を積まず(replaceState)、戻るとホームへ。ホームから入る画面だけ積む(pushState)
 function showTab(t, fromPop) {
@@ -2203,6 +2502,8 @@ function showTab(t, fromPop) {
   window.scrollTo(0, 0);
   renderScopeBar();
   if (t === 'home') updateBadge(); if (t === 'bug') renderBugPend(); if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') renderAuth(); if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
+  if (t === 'group') { gconfirm = null; renderGroup(true); } if (t === 'join') renderJoin(); if (t === 'home' && auth && auth.group && auth.group.leader) refreshGstat(false);   // リーダーだけ: 申し込みの件数の印(ほかの人はホームで受け付けを呼ばない)
+  if (['list', 'map', 'stats', 'sites'].includes(t)) loadGview(false);   // グループの人: グループの記録を取る(1分以内に取った物があればそれを使う)
   if (t === 'map') {
     renderMap();
     if (mapFocus) { initMap(); map.invalidateSize(); map.setView([mapFocus.lat, mapFocus.lng], 17, { animate: false }); mapFocus = null; mapAuto = true; }
@@ -2325,6 +2626,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(() => { quietRefresh(); renderRelogin(); const on = loggedIn(); if (on === wasOn) return; wasOn = on; renderAuth(); if (!on && auth && !isCard() && navigator.onLine) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } }, 20000);
   readCardFromUrl();   // カードの URL(#card=…)で開かれたら、合言葉を URL から消して、暗証番号を聞く
   window.addEventListener('hashchange', readCardFromUrl);   // 開いたままの画面で、もう一度カードをかざした(# だけ変わった)時も同じ
+  $opt('#group').onclick = onGroupClick; $opt('#join').onclick = onJoinClick;
+  if (document.querySelector('#gwho')) $('#gwho').onchange = () => { gWhoSave($('#gwho').value); renderGbar(); renderActiveTab(); };   // 入力した人(グループ): 選んだ物を端末に覚える
   $('#tab-admin').onclick = onAdminClick; $('#tab-admin').onchange = onAdminChange;
   document.querySelectorAll('#bottomnav button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => showTab(b.dataset.go));
@@ -2332,12 +2635,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   $opt('#home-pending-btn').onclick = e => e.currentTarget.classList.contains('zero') ? undefined : busy(e.currentTarget, () => sendPending(false), '送っています…');
   try { history.replaceState({ tab: 'home', d: 0 }, ''); } catch { /* */ }
   window.addEventListener('popstate', e => { if (coatSkipPop) { coatSkipPop = false; return; } const t = (e.state && e.state.tab) || 'home'; showTab(t, true); });
+  try { joinCode = sessionStorage.getItem(JOIN_KEY) || ''; } catch { joinCode = ''; }   // ログインの途中で開き直した時も、参加用リンクを覚えている
+  if (readJoinFromUrl() || joinCode) { renderJoinNote(); if (loggedIn()) showTab('join'); }   // 参加用リンク(?join=)で開かれた: ログイン済みならすぐ、まだならログインの後に申し込みの画面
   $('#btn-gps').onclick = getGps;
   $('#btn-pick').onclick = () => startPick('cat', { from: loc, ok: (lat, lng) => { showTab('record'); setLoc(lat, lng, null, '地図'); }, cancel: () => showTab('record') });
   $('#btn-pickok').onclick = () => { if (!pickPin) return; const p = pickPin.getLatLng(), c = pickCtx; setPicking(false); if (c) c.ok(p.lat, p.lng); };
   $('#btn-pickcancel').onclick = () => { const c = pickCtx, back = pickTarget === 'site' ? 'sites' : 'record'; setPicking(false); if (c) c.cancel(); else showTab(back); };
   $('#btn-here').onclick = () => locateMe(false);
-  if (document.querySelector('#who-q')) { $('#who-q').oninput = () => { whoQ = $('#who-q').value; renderWhoOpts(); }; $('#who-pick').onchange = () => { whoPick = $('#who-pick').value; renderWhoOpts(); renderActiveTab(); }; }
+  if (document.querySelector('#who-q')) { $('#who-q').oninput = () => { whoQ = $('#who-q').value; renderWhoOpts(); }; $('#who-pick').onchange = () => { whoPick = $('#who-pick').value; renderWhoOpts(); renderActiveTab(); }; $('#grp-pick').onchange = () => { grpPickSave($('#grp-pick').value); renderGrpOpts(); renderActiveTab(); }; }
   $('#scopebar').onclick = e => { const b = e.target.closest('button[data-scope]'); if (b) busy(b, () => setScope(b.dataset.scope), b.textContent); };
   $('#showdel').onchange = e => { showDeleted = e.target.checked; setScope('all'); };   // 管理者の「削除済みも見る」
   $('#sitesel').onchange = e => onSitePick(e.target.value);
@@ -2391,7 +2696,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
   bootStep('未送信の数', () => Promise.resolve(updateBadge()).then(() => bootMark('未送信の数を数えた')));
-  bootStep('選択肢と役割', () => { bootMark('受け付け:初めの呼び出し'); return Promise.resolve(refreshMeta()).then(() => bootMark('受け付け:初めの返事')); });   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
+  bootStep('選択肢と役割', () => { bootMark('受け付け:初めの呼び出し'); return Promise.resolve(refreshMeta()).then(() => { bootMark('受け付け:初めの返事'); if (auth && auth.group && auth.group.leader) refreshGstat(false); }); });   // リーダー: 申し込みの件数の印   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
   bootStep('送信', syncQuiet); // 開いた時に、未送信があって電波があれば送る
   window.catBooted = true; bootMark('起動の終わり'); renderBootLog();
 });

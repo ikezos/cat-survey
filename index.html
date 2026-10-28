@@ -18,22 +18,23 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v35">
+<meta name="app-ver" content="cat-survey-v36">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=35">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=35">
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="lib/leaflet.css?v=36">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=36">
+<link rel="stylesheet" href="style.css?v=36">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
 <!-- 自前の絵(線の絵。2026-10-27 見本)。外の部品は使っていない -->
 <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h4.5v-6h4v6h4.5V10"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 7v10M7 12h10"/></symbol>
+<symbol id="i-group" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.2"/><circle cx="16.5" cy="9" r="2.7"/><path d="M2.5 20c0-3.6 2.5-5.8 5.5-5.8s5.5 2.2 5.5 5.8"/><path d="M14.5 14.4c.7-.2 1.3-.3 2-.3 2.6 0 4.5 1.9 4.5 5.4"/></symbol>
 <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></symbol>
 <symbol id="i-map" viewBox="0 0 24 24"><path d="M12 21.5s-7-6.3-7-11.5a7 7 0 0 1 14 0c0 5.2-7 11.5-7 11.5z"/><circle cx="12" cy="10" r="2.6"/></symbol>
 <symbol id="i-bowl" viewBox="0 0 24 24"><path d="M3 12h18a9 9 0 0 1-18 0z"/><path d="M8 8.5c0-1.2 1-1.2 1-2.5M12 8.5c0-1.2 1-1.2 1-2.5M16 8.5c0-1.2 1-1.2 1-2.5"/></symbol>
@@ -58,7 +59,9 @@ setTimeout(function () {
 <div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
 <div id="relogin" class="card relogin hidden" role="status"><p><b>全員の記録を見るには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま全員の記録が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
 <div id="delbar" class="hidden"><label class="line chk"><input type="checkbox" id="showdel"><span>削除済みも見る(管理者)</span></label></div>
-<div id="whobar" class="card pfind whobar hidden" role="group" aria-label="入力した人で絞る"><label class="fl">入力した人を探す(名前か ID の一部)<input id="who-q" type="search" autocomplete="off" placeholder="名前か ID の一部"></label><label class="fl">入力した人<select id="who-pick" class="wide"></select></label><p id="who-found" class="note" aria-live="polite"></p></div>
+<div id="whobar" class="card pfind whobar hidden" role="group" aria-label="入力した人で絞る"><label class="fl">入力した人を探す(名前か ID の一部)<input id="who-q" type="search" autocomplete="off" placeholder="名前か ID の一部"></label><label class="fl">入力した人<select id="who-pick" class="wide"></select></label><p id="who-found" class="note" aria-live="polite"></p><label class="fl" id="grp-pick-l">グループ<select id="grp-pick" class="wide"></select></label><p id="grp-found" class="note" aria-live="polite"></p></div>
+<div id="gbar" class="gbar hidden" role="group" aria-label="グループの記録"><div class="card banner"><svg class="ic lg" aria-hidden="true"><use href="#i-group"/></svg><div><div class="t">グループの記録を見ています</div><div class="g" id="gbar-name"></div></div></div>
+<div class="card pfind whobar"><label class="fl">入力した人<select id="gwho" class="wide"></select></label><p id="gwho-note" class="note" aria-live="polite"></p></div></div>
 <section id="tab-home" class="tab active">
   <div class="homecount">
     <div class="hc"><span class="hcl">これまでの登録<br>みんなで</span><span class="hcn"><span id="home-all">—</span><small>頭</small></span></div>
@@ -71,6 +74,7 @@ setTimeout(function () {
     <button type="button" class="htile" data-go="map"><svg class="ic lg"><use href="#i-map"/></svg><span>地図</span></button>
     <button type="button" class="htile" data-go="sites"><svg class="ic lg"><use href="#i-bowl"/></svg><span>えさ場</span></button>
     <button type="button" class="htile" data-go="stats"><svg class="ic lg"><use href="#i-stats"/></svg><span>集計</span></button>
+    <button type="button" class="htile wideb" id="home-group" data-go="group"><svg class="ic lg"><use href="#i-group"/></svg><span>グループ<br><small id="home-group-sub">仲間と記録を分け合う</small><span id="home-group-badge" class="gbadge hidden"></span></span></button>
   </div>
   <div class="hsmall">
     <a class="hs" id="help-home" href="help.html"><svg class="ic md"><use href="#i-help"/></svg><span>使い方</span></a>
@@ -89,6 +93,7 @@ setTimeout(function () {
     <div id="gsi-btn"></div>
     <button type="button" id="btn-regsi" class="small hidden">Google のボタンを出し直す</button>
     <p id="loginmsg" class="note"></p>
+    <p id="joinnote" class="warn joinnote hidden" role="status">グループの参加用リンクを開きました。ログインすると、参加の申し込みに進みます。</p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
     <div id="cardlogin" class="cardlogin">
       <h3>ログインカードでログイン</h3>
@@ -159,6 +164,8 @@ setTimeout(function () {
   </div>
   <div id="sitelist"></div>
 </section>
+<section id="tab-group" class="tab"><div id="group"></div></section>
+<section id="tab-join" class="tab"><div id="join"></div></section>
 <section id="tab-stats" class="tab"><div id="stats"></div></section>
 <section id="tab-admin" class="tab"><div id="admin"></div></section>
 <section id="tab-bug" class="tab">
@@ -210,12 +217,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=35"></script>
-<script src="lib/leaflet.markercluster.js?v=35"></script>
-<script src="lib/qr.js?v=35"></script>
-<script src="lib/jsQR.js?v=35"></script>
-<script src="scan.js?v=35"></script>
-<script src="config.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="lib/leaflet.js?v=36"></script>
+<script src="lib/leaflet.markercluster.js?v=36"></script>
+<script src="lib/qr.js?v=36"></script>
+<script src="lib/jsQR.js?v=36"></script>
+<script src="scan.js?v=36"></script>
+<script src="config.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

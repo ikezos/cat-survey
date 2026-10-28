@@ -231,10 +231,37 @@ details.sgroup .sgbody{padding:8px 8px 2px}
 .copy{text-align:center;font-size:14px;color:#555;margin:10px 0 4px;line-height:1.5}
 #tab-home>.copy{margin-top:18px}
 .vwload .relogin{color:#222;width:min(340px,84vw);text-align:left;font-size:14px;margin:0}.rph.idwait{background:#e8f3ec;color:#1f5138}
-/* 20261028-0840(艦長 msg 7022 の写真で、画面の右の端が切れて横にはみ出していた): どの画面でも横に動かない。はみ出す物があっても画面の幅で切り(clip は中に巻き取りの箱を作らないので、上の帯の貼り付き・縦の動きは今のまま。body の指定ではスマホの画面の幅が広がるのを止められなかった)、長い文は折り返す。Google のボタンは置く所の幅より広げない */
+/* 20261028-0840(利用者の写真で、画面の右の端が切れて横にはみ出していた): どの画面でも横に動かない。はみ出す物があっても画面の幅で切り(clip は中に巻き取りの箱を作らないので、上の帯の貼り付き・縦の動きは今のまま。body の指定ではスマホの画面の幅が広がるのを止められなかった)、長い文は折り返す。Google のボタンは置く所の幅より広げない */
 main,.top{overflow-x:clip}.sheet{overflow-x:hidden}
 main,.card,.note,.relogin,#sendmsg,.toast{overflow-wrap:break-word}
 .relogin .gsi-spot,#gsi-btn{max-width:100%;min-width:0;overflow:hidden}.relogin .gsi-spot iframe,#gsi-btn iframe{max-width:100%}
 /* 管理の一覧の名前・探す(2026-10-28 0910) */
 .pmail{margin-top:2px;word-break:break-all}.pfind .fl{margin:4px 0}#ad-people .person[hidden]{display:none}
 .whobar{margin:0 0 8px}.whobar .fl{margin:4px 0}body.locked #whobar{display:none !important}
+/* グループ(2026-10-28 その2・見本 20261028-2040 に合わせる) */
+.htile.wideb{grid-column:1/-1;min-height:84px;flex-direction:row;gap:12px;border-color:#a34a00;color:#8a3b00;position:relative}
+.htile.wideb small{font-size:16px;font-weight:normal;color:#555}
+.gbadge{display:inline-block;background:#b3500f;color:#fff;font-size:16px;font-weight:bold;border-radius:12px;padding:2px 9px;line-height:1.4;vertical-align:middle}
+.htile .gbadge{display:table;margin:4px auto 0}.htile .gbadge.hidden{display:none}
+.codebox{text-align:center;font-size:15px;color:#444;margin:4px 0 10px}
+.codebox b{font-family:ui-monospace,monospace;font-size:19px;letter-spacing:.12em;color:#222}
+.ask{text-align:center;padding:16px 12px}.ask .gname{font-size:22px;font-weight:bold;color:#1d4b34;margin:6px 0 4px;overflow-wrap:anywhere}
+.ask p{font-size:18px;margin:6px 0}.ask .ic{color:#2f6f4f}
+.mem{display:flex;align-items:center;gap:8px;min-height:60px;border-bottom:1px solid #eee}.mem:last-of-type{border:0}.mem .nm{flex:1;font-size:18px;overflow-wrap:anywhere;min-width:0}
+.mem .lead,.mem .metag{font-size:13px;font-weight:bold;color:#2f6f4f;background:#e6efe9;border:1px solid #2f6f4f;border-radius:10px;padding:2px 8px;margin-left:6px;white-space:nowrap}
+.mem .metag{color:#555;background:#f3f3f3;border-color:#999}
+.wait{border:2px solid #e0b000;background:#fff8e1;text-align:center;padding:18px 12px}.wait .big{font-size:22px;font-weight:bold;color:#8a3b00;margin:6px 0}.wait .ic{color:#a34a00}
+.wait .gname{font-size:20px;font-weight:bold;color:#1d4b34;margin:6px 0;overflow-wrap:anywhere}.wait p{font-size:18px;margin:8px 0}
+.banner{background:#e6efe9;border:2px solid #2f6f4f;display:flex;align-items:center;gap:10px}.banner .ic{color:#2f6f4f}.banner .t{font-size:13px;color:#555}.banner .g{font-size:19px;font-weight:bold;color:#1d4b34;overflow-wrap:anywhere}
+.banner > div{min-width:0}
+.greq{border:2px solid #e07a2f}
+.greq .row2{display:flex;gap:8px;margin:0 0 10px}.greq .row2 button{flex:1}
+.gyes{background:#b3500f;color:#fff;border:0;font-weight:bold}
+.gconfirm{border:2px solid #c92a2a;border-radius:12px;background:#fff5f5;padding:10px 12px;margin:8px 0}
+.gconfirm p{margin:4px 0}.gconfirm .row2{display:flex;gap:8px;margin-top:8px}.gconfirm .row2 button{flex:1;min-height:52px;font-size:17px;border-radius:10px;background:#fff;border:2px solid #888}.gconfirm .row2 button.danger{border-color:#c92a2a;color:#c92a2a;font-weight:bold}
+.gcopy input{width:100%;box-sizing:border-box;font-size:15px}
+.center{text-align:center}
+.gbar .whobar select{display:block}
+.joinnote{margin:8px 0}
+/* 管理の画面のグループ(2026-10-28 その3) */
+.agms{margin:8px 0}.agm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;padding:6px 0;border-top:1px solid #e5e5e5}.agmn{font-weight:bold;overflow-wrap:anywhere}.agmn .mark{margin-left:6px}.agroup .gconfirm{margin:8px 0}
