@@ -305,6 +305,7 @@ async function reconfirm(cred, exp) {
   const tab = document.querySelector('.tab.active');
   if (job === 'all' && auth.viewAll) await setScope('all');
   else if (job === 'admin' && tab && tab.id === 'tab-admin') renderAdmin();
+  else if (job === 'group') groupResume();   // 20261029: グループの作る・承認・断る・外す・作り直す(参加の申し込み)を、そのまま続ける
 }
 const GSI_BTN = { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 };
 // 20261028-0840: ボタンの幅は、置く所の幅に合わせる(300 を上限・Google の決まりの下限 200)。狭い画面で横にはみ出さないように
@@ -332,14 +333,16 @@ function renderRelogin() {
     gsiSpot(set);
   }
   gsiSpot(document.getElementById('relogin-admin'));
+  gsiSpot(document.getElementById('relogin-group'));
   document.querySelectorAll('.relogin-photo').forEach(gsiSpot);
 }
 // 通行証でログインしたまま、全員の記録・管理を見ている人の ID トークンが切れる前に、Google の自動のログイン(前に選んだアカウント)で静かに取り直す。
 // 選び直しの画面が出る時もあるので、全員の記録・管理を見ている時だけ・30分に1回まで(何度も出して嫌われると、Google が自動のログインをしばらく止めるため)
+// 20261029: リーダーがグループの画面を開いている間も同じ(承認・断る・外す・作り直すに ID トークンが要るため)
 function quietRefresh() {
-  if (!(loggedIn() && !isCard() && auth.viewAll && gsiState === 'ready' && navigator.onLine && document.visibilityState === 'visible')) return;
-  const tab = document.querySelector('.tab.active');
-  if (!(scope === 'all' || (tab && tab.id === 'tab-admin'))) return;
+  if (!(loggedIn() && !isCard() && gsiState === 'ready' && navigator.onLine && document.visibilityState === 'visible')) return;
+  const tab = document.querySelector('.tab.active'), lead = !!(tab && tab.id === 'tab-group' && auth.group && auth.group.leader);
+  if (!((auth.viewAll && (scope === 'all' || (tab && tab.id === 'tab-admin'))) || lead)) return;
   if (auth.exp * 1000 > Date.now() + 5 * 60000 || Date.now() - quietPromptAt < 30 * 60000) return;
   quietPromptAt = Date.now();
   try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ }
@@ -543,7 +546,7 @@ async function api(action, extra = {}, ms) {
   if (!configured()) return { ok: false, error: 'not_configured' };
   if (!tokenValid()) return { ok: false, error: 'not_logged_in' };
   // 全員の記録・管理の操作は、Google の新しい ID トークンが要る(通行証だけでは通さない)
-  const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all') || (action === 'photo' && (extra.items || []).some(i => i.ownerId));   // 他の人の記録の写真も、全員の記録と同じ
+  const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all') || (action === 'photo' && (extra.items || []).some(i => i.ownerId) && !(isCard() && gActive()));   // 他の人の記録の写真も、全員の記録と同じ(カードの人のグループの写真は通行証で。受け付けがグループの記録だけ渡す。2026-10-29)
   if (needId && !idValid()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? (/^admin/.test(action) ? 'not_allowed' : 'card_no_all') : 'id_needed' }; }   // カードの人: 全員の記録・他の人の写真は「Google でログインした人だけ」の案内
   // カードの人は通行証。Google の人は ID トークンが期限内ならそれ(通行証をまだ持っていなければ whoami で受け取る)、切れていれば通行証
   const cred = isCard() || !idValid() ? { pass: auth.pass } : { idToken: auth.idToken, ...(action === 'whoami' && !(auth.pass && auth.passExp > Date.now() + 7 * 864e5) ? { wantPass: true } : {}) };
@@ -580,7 +583,7 @@ Object.assign(ERR_TEXT, {   // グループ(2026-10-28 その2)
   too_many_tries: '参加の申し込みが多すぎます。1時間ほど待ってから、もう一度リンクを押してください。', not_leader: 'リーダーだけができる操作です。', not_in_group: 'グループに入っていません。',
   leader_cannot_leave: 'リーダーは抜けられません(リーダーを替えるには、管理者に頼んでください)。', not_member: 'この人は、このグループのメンバーではありません(画面を読み直してください)。', requester_in_group: 'この人は、ほかのグループに入りました。申し込みは取り消されました。',
   card_not_allowed: 'ログインカードの人は、グループを作れません。', card_no_group: 'ログインカードの人は、グループの記録を見られません(自分の記録だけです)。',
-  need_login: 'グループを作る・承認する・外すなどは、Google でもう一度ログインしてから使えます(設定の「Google でもう一度ログイン」)。' });
+  need_login: 'グループを作る・承認する・外すなどは、Google でもう一度確かめてから使えます。下に出た Google のボタンを押してください(ログアウトはしません)。' });
 const errText = e => ERR_TEXT[e] || `送れませんでした(${e || '不明'})`;
 const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = ng; r.readAsDataURL(b); });
 
@@ -1126,12 +1129,12 @@ const siteNameOf = (id, sm) => id ? ((sm.get(id) || {}).name || 'えさ場(見�
 const whoText = r => r.recorderId ? (nameOf(r.recorderId) ? `入力者 ${nameOf(r.recorderId)}` : `入力者 ID ${String(r.recorderId).slice(0, 6)}`) : '';   // 名前があれば名前(全員の記録の時だけ来る)
 
 // ---- グループ(2026-10-28 その2)----
-// グループの Google の人は、一覧・地図・集計・えさ場で、自分の記録 + グループの記録を見る(受け付けの list scope:'group')。グループの記録は端末に保存しない(画面を開いている間だけ持つ)。
-// カードの人・グループなしの人は今のまま(自分の分だけ)。「全員の記録」(役割)を見ている間は、そちらが先。
+// グループのメンバー(Google の人も、2026-10-29 からカードの人も)は、一覧・地図・集計・えさ場で、自分の記録 + グループの記録を見る(受け付けの list scope:'group')。グループの記録は端末に保存しない(画面を開いている間だけ持つ)。
+// グループなしの人は今のまま(自分の分だけ)。見られるかは受け付けが返す group.view で決める(前の受け付けはカードの人に view:false = 自分の分だけ)。「全員の記録」(役割)を見ている間は、そちらが先。
 // 入力した人の絞り込み(全員/自分だけ/名前)は、最後に選んだ物を端末に覚える(読めない時は「全員」・最初は「全員」)
 const GWHO_KEY = 'catSurvey.groupWho', GVIEW_MS = 60000, GSTAT_MS = 60000, JOIN_KEY = 'catSurvey.join';
-let gview = null, gviewP = null, gstat = null, gstatP = null, joinCode = '', gconfirm = null, gcreate = false, gcopyFail = false, gReq = null;
-const grpView = () => !!(loggedIn() && !isCard() && auth.group && auth.group.view && scope !== 'all');
+let gview = null, gviewP = null, gstat = null, gstatP = null, joinCode = '', gconfirm = null, gcreate = false, gcopyFail = false, gReq = null, gNeed = null, gName = '';
+const grpView = () => !!(loggedIn() && auth.group && auth.group.view && scope !== 'all');
 const gActive = () => grpView() && !!gview;
 const wide = () => (scope === 'all' && !!allView) || gActive();   // ほかの人の記録も出ている
 const curView = () => scope === 'all' && allView ? allView : gActive() ? gview : null;
@@ -1139,7 +1142,7 @@ const gWhoRead = () => { try { const v = localStorage.getItem(GWHO_KEY); return 
 let gWho = gWhoRead();
 function gWhoSave(v) { gWho = v; try { if (v) localStorage.setItem(GWHO_KEY, v); else localStorage.removeItem(GWHO_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
 const gWhoNow = () => gActive() ? gWho : '';
-function gReset() { gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; renderHomeGroup(); }
+function gReset() { gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; gNeed = null; gName = ''; renderHomeGroup(); }
 // whoami・groupStatus の返事から、自分のグループ(名前・リーダーか・見られるか)を端末に控える(古い受け付けは group を返さない=何も変えない)
 function takeGroup(g) {
   const ng = g ? { id: String(g.id || ''), name: String(g.name || ''), leader: !!g.leader, view: !!g.view } : null, before = JSON.stringify(auth && auth.group || null);
@@ -1153,7 +1156,8 @@ async function loadGview(force) {
   if (!gviewP) gviewP = (async () => {
     const r = await api('list', { scope: 'group' });
     if (r.ok) { gview = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {}, at: Date.now() }; if (r.group) takeGroup({ ...r.group, view: true }); takeHomeCounts(r); }
-    else if (r.error === 'not_in_group' || r.error === 'card_no_group') { gview = null; takeGroup(null); }
+    else if (r.error === 'not_in_group') { gview = null; takeGroup(null); }
+    else if (r.error === 'card_no_group' && auth.group) { gview = null; takeGroup({ ...auth.group, view: false }); }   // 前の受け付け: カードの人はグループに入ったまま、自分の分だけ
   })().finally(() => { gviewP = null; });
   await gviewP; renderScopeBar(); renderActiveTab();
 }
@@ -1196,6 +1200,37 @@ function gConfirmHtml() {
     newcode: ['本当にリンクを作り直しますか？', '前のリンクと参加コードは、すぐに使えなくなります。', '作り直す'] }[c.act];
   return `<div class="gconfirm" role="alertdialog" aria-label="${esc(T[0])}"><p><b>${esc(T[0])}</b></p><p class="note">${esc(T[1])}</p><div class="row2"><button type="button" class="danger" data-g="yes">はい、${esc(T[2])}</button><button type="button" data-g="no">やめる</button></div></div>`;
 }
+// ---- グループの操作の前の、Google の確かめ直し(20261029。利用者の声「グループを作ろうとすると、もう一度ログインと出るが、ログインの画面が出てこない」)----
+// 作る・承認・断る・外す・作り直すは、受け付けが Google の ID トークンを要る(通行証だけでは need_login)。ID トークン(約1時間)が切れていたら、受け付けを呼ぶ前に、
+// 押した所に Google のボタンの箱を出す(管理の画面と同じ形)。受け付けから need_login が返った時も同じ。確かめが済んだら(reconfirm の 'group')、押した操作をそのまま続ける。
+// gNeed: 確かめを待っている操作 { action, extra, where(箱を出す所), id }。カードの人は対象にしない(作れない案内のまま・リーダーにもならない)
+const G_NEED_ID = ['groupCreate', 'groupApprove', 'groupDecline', 'groupRemove', 'groupNewCode'], G_WHERE = { groupCreate: 'create', groupNewCode: 'code', groupApprove: 'req', groupDecline: 'req', groupRemove: 'mem', groupJoin: 'join' };
+const groupNeedId = action => !!auth && !isCard() && G_NEED_ID.includes(action);
+const gReloginHtml = () => '<div class="card relogin" id="relogin-group" role="status"><p><b>この操作は、Google でもう一度確かめてから使えます。</b></p><p class="note">下のボタンを押してください。ログアウトはしません。確かめが済むと、押した操作をそのまま続けます(この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>';
+const GNEED_PAD = '<div class="gneed-pad" aria-hidden="true"></div>';   // 箱が下の知らせに隠れないよう、下に余白(画面が短くて上へ動かせない時のため)
+const gBox = (where, id) => gNeed && gNeed.where === where && (id == null || gNeed.id === id) ? gReloginHtml() : '';
+function gReloginShow(action, extra) {
+  gNeed = { action, extra, where: G_WHERE[action] || 'create', id: action === 'groupRemove' ? extra.memberId : null }; reauth = 'group'; gconfirm = null;
+  if (gNeed.where === 'join') { const btn = document.querySelector('#join [data-j=apply]'); if (btn && !document.querySelector('#relogin-group')) btn.insertAdjacentHTML('beforebegin', gReloginHtml()); }
+  else renderGroup(false);
+  const box = document.querySelector('#relogin-group'); gsiSpot(box); if (box) gBoxScroll(box);
+  toast(errText('need_login'), 6000);
+}
+// 箱が上の帯の下・下の知らせ(画面の下の3割)に隠れる時だけ、箱が上の帯のすぐ下に来るように動かす(作る時は名前の欄も見えるように「グループを作る」の欄ごと・外す時は外す人の行から)
+function gBoxScroll(box) {
+  const hd = (document.querySelector('header') || {}).offsetHeight || 0, r = box.getBoundingClientRect();
+  if (r.top >= hd && r.bottom <= innerHeight * 0.7) return;
+  const w = gNeed && gNeed.where, el = w === 'create' && document.getElementById('gcreate') || w === 'mem' && box.previousElementSibling || box;   // 外す時は、外す人の名前も見えるように
+  window.scrollBy(0, el.getBoundingClientRect().top - hd - 8);
+}
+function groupResume() {
+  const n = gNeed, tab = document.querySelector('.tab.active'); gNeed = null; if (!n || !tab) return;
+  if (n.where === 'join') { if (tab.id !== 'tab-join') return; const box = document.querySelector('#relogin-group'); if (box) box.remove(); return busy(document.querySelector('#join [data-j=apply]'), joinApply, '申し込んでいます…'); }
+  if (tab.id !== 'tab-group') return;
+  if (n.action === 'groupCreate') { const i = document.querySelector('#g-name'), v = i ? (i.value || '').replace(/\s+/g, ' ').trim() : ''; if (v && v.length <= 20) { gName = v; n.extra = { name: v }; } }   // 箱が出ている間に名前を直した時は、直した名前で作る
+  renderGroup(false);
+  return groupAct(n.action, n.extra);
+}
 async function renderGroup(fresh = true) {
   const el = document.getElementById('group'); if (!el) return;
   if (fresh) {
@@ -1214,21 +1249,23 @@ async function renderGroup(fresh = true) {
     el.innerHTML = `<div class="card"><h3>グループに入っていません</h3><p class="note">グループに入ると、仲間の記録・えさ場・地図・集計をみんなで見られます。入らなくても、今までどおり自分の記録は使えます。</p>
 ${s.canCreate ? (gcreate ? '' : '<button type="button" class="act orange" data-g="create-open">グループを作る<small>あなたがリーダーになります</small></button>') : '<p class="note">グループを作れるのは、Google でログインした人だけです(ログインカードの人も、参加用リンクから入れます)。</p>'}</div>
 <div class="card"><h3>グループに入るには</h3><p class="note">参加用リンクを受け取ったら、<b>そのリンクを押してください。</b></p></div>
-${s.canCreate && gcreate ? `<div class="card" id="gcreate"><h3>グループを作る</h3><label class="fl">グループの名前<input type="text" id="g-name" maxlength="20" autocomplete="off" enterkeyhint="done"></label><p class="note">名前は、あとから参加する人にも見えます(20字まで)。</p><button type="button" class="primary" data-g="create">作る</button><button type="button" class="wide" data-g="create-cancel">やめる</button></div>` : ''}`;
+${s.canCreate && gcreate ? `<div class="card" id="gcreate"><h3>グループを作る</h3><label class="fl">グループの名前<input type="text" id="g-name" maxlength="20" autocomplete="off" enterkeyhint="done" value="${esc(gName)}"></label><p class="note">名前は、あとから参加する人にも見えます(20字まで)。</p>${gBox('create')}<button type="button" class="primary" data-g="create">作る</button><button type="button" class="wide" data-g="create-cancel">やめる</button></div>${gNeed ? GNEED_PAD : ''}` : ''}`;
+    gsiSpot(document.querySelector('#relogin-group'));
     return;
   }
   const members = (g.members || []).slice().sort((a, b) => (b.leader - a.leader) || (b.me ? 1 : 0) - (a.me ? 1 : 0));
-  const memHtml = m => `<div class="mem"><span class="nm">${esc(m.name)}${m.leader ? '<span class="lead">リーダー</span>' : ''}${m.me && !m.leader ? '<span class="metag">自分</span>' : ''}${m.card ? ' <small class="note">(カード)</small>' : ''}</span>${g.leader && !m.leader && !gAsk('remove', m.id) ? `<button type="button" class="small" data-g="remove" data-id="${esc(m.id)}" data-name="${esc(m.name)}">外す</button>` : ''}</div>${g.leader && gAsk('remove', m.id) ? gConfirmHtml() : ''}`;
+  const memHtml = m => `<div class="mem"><span class="nm">${esc(m.name)}${m.leader ? '<span class="lead">リーダー</span>' : ''}${m.me && !m.leader ? '<span class="metag">自分</span>' : ''}${m.card ? ' <small class="note">(カード)</small>' : ''}</span>${g.leader && !m.leader && !gAsk('remove', m.id) ? `<button type="button" class="small" data-g="remove" data-id="${esc(m.id)}" data-name="${esc(m.name)}">外す</button>` : ''}</div>${g.leader && gAsk('remove', m.id) ? gConfirmHtml() : ''}${g.leader ? gBox('mem', m.id) : ''}`;
   const memCard = `<div class="card"><h3>メンバー(${g.memberCount || members.length}人)</h3>${members.map(memHtml).join('')}<p class="note">メールアドレスは、だれにも見えません。名前だけが見えます。</p></div>`;
   if (g.leader) {
     const link = joinLink(g.code), reqs = g.requests || [];
     el.innerHTML = `<div class="card banner">${gIcon()}<div><div class="t">あなたはリーダーです</div><div class="g">${esc(g.name)}</div></div></div>
 <div class="card"><h3>仲間を呼ぶ</h3><button type="button" class="act orange" data-g="copy">参加用リンクをコピー<small>LINE などで送ってください</small></button>
 ${gcopyFail ? `<div class="gcopy"><p class="note">この端末ではコピーできませんでした。下のリンクを長押しして選び、コピーしてください。</p><input type="text" id="g-link" readonly value="${esc(link)}" aria-label="参加用リンク"></div>` : ''}
-<p class="codebox">参加コード <b id="g-code">${esc(g.code || '')}</b></p>${gAsk('newcode') ? gConfirmHtml() : '<button type="button" class="wide" data-g="newcode">リンクを作り直す</button>'}<p class="note">作り直すと、前のリンクは使えなくなります。</p></div>
-${reqs.length ? `<div class="card greq"><h3>参加の申し込み <span class="gbadge">${reqs.length}件</span></h3>${reqs.map(q => `<div class="mem"><span class="nm">${esc(q.name)}</span></div><div class="row2"><button type="button" class="small gyes" data-g="approve" data-id="${esc(q.id)}">承認</button><button type="button" class="small" data-g="decline" data-id="${esc(q.id)}">断る</button></div>`).join('')}</div>` : ''}
-${memCard}`;
+<p class="codebox">参加コード <b id="g-code">${esc(g.code || '')}</b></p>${gAsk('newcode') ? gConfirmHtml() : gBox('code') || '<button type="button" class="wide" data-g="newcode">リンクを作り直す</button>'}<p class="note">作り直すと、前のリンクは使えなくなります。</p></div>
+${reqs.length ? `<div class="card greq"><h3>参加の申し込み <span class="gbadge">${reqs.length}件</span></h3>${gBox('req')}${reqs.map(q => `<div class="mem"><span class="nm">${esc(q.name)}</span></div><div class="row2"><button type="button" class="small gyes" data-g="approve" data-id="${esc(q.id)}">承認</button><button type="button" class="small" data-g="decline" data-id="${esc(q.id)}">断る</button></div>`).join('')}</div>` : ''}
+${memCard}${gNeed ? GNEED_PAD : ''}`;
     if (gcopyFail) { const i = $('#g-link'); i.onfocus = () => i.select(); }
+    gsiSpot(document.querySelector('#relogin-group'));
     return;
   }
   el.innerHTML = `<div class="card banner">${gIcon()}<div><div class="t">グループに入っています</div><div class="g">${esc(g.name)}</div></div></div>
@@ -1238,11 +1275,13 @@ ${gAsk('leave') ? gConfirmHtml() : '<button type="button" class="wide danger" da
 // グループの操作(押した時だけ・電波が要る)。二度押し・送り直しは同じ reqId(受け付けが already_done にする)
 async function groupAct(action, extra = {}) {
   if (!navigator.onLine) return toast(WEAK_TEXT_TRY, 5000);
+  if (groupNeedId(action) && !idValid()) { gReloginShow(action, extra); try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } return { ok: false, error: 'need_login' }; }   // 20261029: 通行証だけで送って断られに行かない
   const key = action + JSON.stringify(extra); if (!gReq || gReq.key !== key) gReq = { key, id: newId('g') };
   const r = await api(action, { ...extra, reqId: gReq.id });
   if (!noAnswer(r.error)) gReq = null;
-  if (r.ok) { gconfirm = null; gcreate = false; gcopyFail = false; gview = null; if (r.status) takeGstat(r.status); else await refreshGstat(true); renderGroup(false); return r; }
+  if (r.ok) { gconfirm = null; gcreate = false; gcopyFail = false; gview = null; gName = ''; if (r.status) takeGstat(r.status); else await refreshGstat(true); renderGroup(false); return r; }
   if (r.error === 'already_done') { await refreshGstat(true); renderGroup(false); return r; }
+  if (r.error === 'need_login' && !isCard()) { gReloginShow(action, extra); return r; }   // 受け付けから断られた時も、知らせだけで終わらずにその場に Google のボタンを出す
   toast(errText(r.error), 6000); if (['not_leader', 'not_in_group', 'not_found', 'requester_in_group'].includes(r.error)) { gconfirm = null; renderGroup(true); }
   return r;
 }
@@ -1258,13 +1297,14 @@ function onGroupClick(e) {
   const b = e.target.closest('button[data-g]'); if (!b) return; const a = b.dataset.g;
   if (a === 'reload') return renderGroup(true);
   if (a === 'create-open') { gcreate = true; renderGroup(false); const i = $('#g-name'); if (i) i.focus(); return; }
-  if (a === 'create-cancel') { gcreate = false; return renderGroup(false); }
-  if (a === 'create') { const n = ($('#g-name').value || '').replace(/\s+/g, ' ').trim(); if (!n) return toast('グループの名前を入れてください', 4000); if (n.length > 20) return toast('グループの名前は20字までです', 4000); return busy(b, () => groupAct('groupCreate', { name: n }), '作っています…'); }
+  if (a === 'create-cancel') { gcreate = false; gNeed = null; gName = ''; return renderGroup(false); }
+  if (a === 'create') { const n = ($('#g-name').value || '').replace(/\s+/g, ' ').trim(); if (!n) return toast('グループの名前を入れてください', 4000); if (n.length > 20) return toast('グループの名前は20字までです', 4000); gName = n; return busy(b, () => groupAct('groupCreate', { name: n }), '作っています…'); }
   if (a === 'copy') return copyJoin(b);
   if (a === 'newcode') { gconfirm = { act: 'newcode' }; return renderGroup(false); }
   if (a === 'remove') { gconfirm = { act: 'remove', id: b.dataset.id, name: b.dataset.name }; return renderGroup(false); }
   if (a === 'leave') { gconfirm = { act: 'leave' }; return renderGroup(false); }
   if (a === 'no') { gconfirm = null; return renderGroup(false); }
+  if (a !== 'create') gNeed = null;   // 確かめを待っている間に別の操作を押したら、待っていた操作は取り消す(押した操作が、また要れば箱を出す)
   if (a === 'yes' && gconfirm) { const c = gconfirm; return busy(b, () => c.act === 'remove' ? groupAct('groupRemove', { memberId: c.id }) : c.act === 'leave' ? groupAct('groupLeave') : groupAct('groupNewCode')); }
   if (a === 'approve') return busy(b, () => groupAct('groupApprove', { requestId: b.dataset.id }), '承認しています…');
   if (a === 'decline') return busy(b, () => groupAct('groupDecline', { requestId: b.dataset.id }), '断っています…');
@@ -1308,14 +1348,16 @@ async function onJoinClick(e) {
   if (a === 'home' || a === 'stop') { clearJoin(); return showTab('home'); }
   if (a === 'group') return showTab('group');
   if (a === 'retry') return renderJoin();
-  if (a === 'apply') return busy(b, async () => {
-    if (!gReq || gReq.key !== 'join' + joinCode) gReq = { key: 'join' + joinCode, id: newId('g') };
-    const r = await api('groupJoin', { code: joinCode, reqId: gReq.id });
-    if (!noAnswer(r.error)) gReq = null;
-    if (r.ok || r.error === 'already_done' || r.error === 'already_requested') { clearJoin(); gstat = null; showTab('group'); return; }
-    if (r.error === 'not_found') { $('#join').innerHTML = JOIN_BAD; clearJoin(); return; }
-    toast(errText(r.error), 6000);
-  }, '申し込んでいます…');
+  if (a === 'apply') return busy(b, joinApply, '申し込んでいます…');
+}
+async function joinApply() {
+  if (!gReq || gReq.key !== 'join' + joinCode) gReq = { key: 'join' + joinCode, id: newId('g') };
+  const r = await api('groupJoin', { code: joinCode, reqId: gReq.id });
+  if (!noAnswer(r.error)) gReq = null;
+  if (r.ok || r.error === 'already_done' || r.error === 'already_requested') { clearJoin(); gstat = null; showTab('group'); return; }
+  if (r.error === 'not_found') { $('#join').innerHTML = JOIN_BAD; clearJoin(); return; }
+  if (r.error === 'need_login' && !isCard()) return gReloginShow('groupJoin', {});   // 20261029: 今の受け付けは申し込みに need_login を返さない(通行証で申し込める)が、返っても行き止まりにしない
+  toast(errText(r.error), 6000);
 }
 
 // ---- 一覧 ----
@@ -2015,7 +2057,7 @@ async function renderAdmin() {
       <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
     <div id="ad-groups"></div>
-    <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
+    <div class="card"><p class="note">カードの人は、入力と自分の記録の直しができます。グループに入っていれば、グループの記録も見られます(役割は付けられません。グループを作る・リーダーにはなれません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
@@ -2275,7 +2317,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v36';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v37';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2502,6 +2544,7 @@ function showTab(t, fromPop) {
   window.scrollTo(0, 0);
   renderScopeBar();
   if (t === 'home') updateBadge(); if (t === 'bug') renderBugPend(); if (t === 'list') renderList(); if (t === 'stats') renderStats(); if (t === 'sites') renderSites(); if (t === 'settings') renderAuth(); if (t === 'record') renderSiteCands(); if (t === 'admin') renderAdmin();
+  if (t === 'group' || t === 'join') gNeed = null;   // 開き直した時は、確かめを待っていた操作を持ち越さない
   if (t === 'group') { gconfirm = null; renderGroup(true); } if (t === 'join') renderJoin(); if (t === 'home' && auth && auth.group && auth.group.leader) refreshGstat(false);   // リーダーだけ: 申し込みの件数の印(ほかの人はホームで受け付けを呼ばない)
   if (['list', 'map', 'stats', 'sites'].includes(t)) loadGview(false);   // グループの人: グループの記録を取る(1分以内に取った物があればそれを使う)
   if (t === 'map') {

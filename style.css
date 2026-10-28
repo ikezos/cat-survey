@@ -265,3 +265,5 @@ main,.card,.note,.relogin,#sendmsg,.toast{overflow-wrap:break-word}
 .joinnote{margin:8px 0}
 /* 管理の画面のグループ(2026-10-28 その3) */
 .agms{margin:8px 0}.agm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;padding:6px 0;border-top:1px solid #e5e5e5}.agmn{font-weight:bold;overflow-wrap:anywhere}.agmn .mark{margin-left:6px}.agroup .gconfirm{margin:8px 0}
+/* 20261029 group-relogin: グループの画面で Google のボタンの箱を出した時の下の余白(箱を上の帯のすぐ下まで動かせるように) */
+.gneed-pad{height:40vh}
