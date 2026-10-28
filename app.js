@@ -305,12 +305,14 @@ async function reconfirm(cred, exp) {
   else if (job === 'admin' && tab && tab.id === 'tab-admin') renderAdmin();
 }
 const GSI_BTN = { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja', width: 300 };
+// 20261028-0840: ボタンの幅は、置く所の幅に合わせる(300 を上限・Google の決まりの下限 200)。狭い画面で横にはみ出さないように
+const gsiBtn = el => { const w = Math.floor((el && el.clientWidth) || 0); return w > 0 && w < 300 ? { ...GSI_BTN, width: Math.max(200, w) } : GSI_BTN; };
 // 箱(wrap)の中の .gsi-spot に Google のボタンを出す。出せない時は「Google のボタンを出し直す」と訳を出す
 function gsiSpot(wrap) {
   if (!wrap) return;
   const spot = wrap.querySelector('.gsi-spot'), rg = wrap.querySelector('.regsi'), m = wrap.querySelector('.gsi-msg');
   if (!spot || !rg || !m) return;
-  if (gsiState === 'ready' && !spot.firstChild && wrap.offsetParent) { try { google.accounts.id.renderButton(spot, GSI_BTN); } catch { /* 部品が無い時 */ } }
+  if (gsiState === 'ready' && !spot.firstChild && wrap.offsetParent) { try { google.accounts.id.renderButton(spot, gsiBtn(spot)); } catch { /* 部品が無い時 */ } }
   const shown = gsiState === 'ready' && !!spot.querySelector('*');
   rg.classList.toggle('hidden', shown || gsiState === 'loading');
   m.textContent = shown ? '' : gsiState === 'loading' ? 'Google のボタンを読み込んでいます…' : !navigator.onLine ? '電波がありません。電波がある所で「Google のボタンを出し直す」を押してください。' : 'Google のボタンを出せませんでした。「Google のボタンを出し直す」を押してください。';
@@ -397,24 +399,48 @@ function openCardPin() {
   }, 'ログインしています…');
   setTimeout(() => { try { $('#pin').focus(); } catch { /* 画面が無い時 */ } }, 50);
 }
-let gsiState = 'loading', gsiTimer = null;
+let gsiState = 'loading', gsiTimer = null, gsiRetry = null, gsiTry = 0, gsiNo = 0;
 // 20261027-0820: Google の部品が10秒で読めなければ「読めない」とし、ログインの画面に「Google のボタンを出し直す」を出す(ログインカードのボタンは、部品を待たずに初めから出ている)
-function loadGsi() {
+// 20261028-0840(艦長 msg 7022「Googleのボタンが出せないケースがある」): 読めなかった時、電波がある間は「出せませんでした」にする前に裏で2回まで読み直す(その間は「読み込んでいます…」)。
+//  前は1回読めないと、押すまで読み直さなかった。電波が戻った時・画面に戻った時も、読めていなければ読み直す。部品がもう届いている(前に読めた)時は、読み込まずにそれでボタンを出す
+const GSI_WAIT_MS = 10000, GSI_RETRY_MS = [3000, 8000];
+const gsiThere = () => !!(window.google && google.accounts && google.accounts.id && typeof google.accounts.id.renderButton === 'function');
+function gsiReady(why) {
+  clearTimeout(gsiTimer); clearTimeout(gsiRetry);
+  if (gsiState === 'ready') { try { gsiInit(); } catch { /* 部品が無い時 */ } return; }   // 遅れて届いた前の読み込み(もうボタンは出ている)。部品が読み直された時のため、設定だけ入れ直す
+  bootMark(why); gsiState = 'ready'; initGsi(); renderAuth();
+}
+function gsiFail(why) {
+  clearTimeout(gsiTimer); if (gsiState !== 'loading') return;
+  bootMark(why);
+  if (gsiThere()) return gsiReady('Googleの部品:前に読めた物を使う');
+  if (navigator.onLine && gsiTry < GSI_RETRY_MS.length) { clearTimeout(gsiRetry); gsiRetry = setTimeout(() => loadGsi(true), GSI_RETRY_MS[gsiTry++]); return; }   // 「読み込んでいます…」のまま、裏で読み直す
+  gsiState = 'failed'; renderAuth();
+}
+// auto=裏の読み直し。押した時(auto でない)は、読み直しの回数を数え直す
+function loadGsi(auto) {
   if (!CONF.GOOGLE_CLIENT_ID) { gsiState = 'noconfig'; return renderAuth(); }
-  bootMark('Googleの部品:読み込み開始');
-  const old = document.getElementById('gsi-script'); if (old) old.remove();
+  if (!auto) gsiTry = 0;
+  clearTimeout(gsiTimer); clearTimeout(gsiRetry);
   document.querySelectorAll('.gsi-spot').forEach(x => { x.textContent = ''; });   // 出し直す時は、その場の Google のボタンも作り直す
-  gsiState = 'loading'; clearTimeout(gsiTimer);
+  gsiState = 'loading';
+  if (gsiThere()) return gsiReady('Googleの部品:前に読めた物を使う');   // 前に読めた部品がある(出し直す・電波が戻った時)。読み込まずにボタンを作り直す
+  bootMark(auto ? 'Googleの部品:裏で読み直し' : 'Googleの部品:読み込み開始');
+  const old = document.getElementById('gsi-script'); if (old) old.removeAttribute('id');   // 前の読み込みは消さずに残す(遅れて届けば、それでボタンを出す)
   const s = document.createElement('script'); s.id = 'gsi-script'; s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
-  s.onload = () => { clearTimeout(gsiTimer); bootMark('Googleの部品:読めた'); gsiState = 'ready'; initGsi(); renderAuth(); };
-  s.onerror = () => { clearTimeout(gsiTimer); bootMark('Googleの部品:読めない'); gsiState = 'failed'; renderAuth(); };
-  gsiTimer = setTimeout(() => { if (gsiState === 'loading') { bootMark('Googleの部品:10秒で読めない'); gsiState = 'failed'; renderAuth(); } }, 10000);
+  const no = ++gsiNo, mine = f => () => { if (no === gsiNo) f(); };   // 読めなかった知らせは、今の読み込みの物だけ聞く(前の読み込みの遅れた誤りで、今の読み込みを止めない)
+  s.onload = () => gsiThere() ? gsiReady('Googleの部品:読めた') : mine(() => gsiFail('Googleの部品:中身が無い'))();
+  s.onerror = mine(() => gsiFail('Googleの部品:読めない'));
+  gsiTimer = setTimeout(() => gsiFail('Googleの部品:10秒で読めない'), GSI_WAIT_MS);
   document.head.appendChild(s);
 }
+// 読めないままの時は、電波が戻った時・画面に戻った時に、裏で読み直す
+const gsiAgain = () => { if (gsiState === 'failed' && navigator.onLine) { loadGsi(); renderAuth(); } };
+const gsiInit = () => google.accounts.id.initialize({ client_id: CONF.GOOGLE_CLIENT_ID, callback: window.onGoogleCredential, auto_select: true, itp_support: true, use_fedcm_for_prompt: true });
 function initGsi() {
   try {
-    google.accounts.id.initialize({ client_id: CONF.GOOGLE_CLIENT_ID, callback: window.onGoogleCredential, auto_select: true, itp_support: true, use_fedcm_for_prompt: true });
-    google.accounts.id.renderButton($('#gsi-btn'), GSI_BTN); bootMark('Googleのボタン');
+    gsiInit();
+    const gb = $('#gsi-btn'); gb.textContent = ''; google.accounts.id.renderButton(gb, gsiBtn(gb)); bootMark('Googleのボタン');
     if (auth && !isCard() && !tokenValid()) google.accounts.id.prompt(); // 前に Google でログインした人は、期限が切れていれば取り直しを促す
   } catch { gsiState = 'failed'; }
 }
@@ -536,7 +562,7 @@ const ERR_TEXT = {
   stopped: 'このアカウントは止められています。管理者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
   card_stopped: 'このカードは止まっています。管理者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。管理者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
-  bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '呼び名は1〜20字で入れてください。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
+  bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前(呼び名)は20字までで入れてください(カードの人は空にできません)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
   network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
   server_not_configured: '受け付け側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
@@ -694,7 +720,7 @@ async function refreshFromServer(quiet = false) {
   if (!configured()) return say(errText('not_configured'), 5000);
   if (!loggedIn()) return say(errText('not_logged_in'), 5000);
   const res = await api('list');
-  if (!res.ok) return say(noAnswer(res.error) ? (NET_ERR.includes(res.error) ? WEAK_TEXT_TRY : SRV_TEXT) : errText(res.error), 5000);
+  if (!res.ok) return say(noAnswer(res.error) ? (NET_ERR.includes(res.error) ? (quiet ? WEAK_TEXT : WEAK_TEXT_TRY) : SRV_TEXT) : errText(res.error), 5000);   // 押していない裏の取り直し(quiet)は「もう一度押して」ではなく「つながったら自動で」(0911)
   lastRefreshAt = Date.now();
   applyMeta(res);
   const lsites = new Map((await allSites()).map(x => [x.id, x])), putS = [], seenS = new Set(); let queuedS = false;
@@ -1010,7 +1036,32 @@ function renderScopeBar() {
   bar.classList.toggle('hidden', !show);
   bar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.scope === scope));
   const del = $('#delbar'); if (del) { del.classList.toggle('hidden', !(show && scope === 'all' && auth.admin && ['tab-list', 'tab-sites'].includes(tab.id))); $('#showdel').checked = showDeleted; }
+  const wb = $opt('#whobar'); if (wb) { wb.classList.toggle('hidden', !(show && scope === 'all' && allView)); if (show && scope === 'all' && allView) renderWhoOpts(); }
   renderRelogin();
+}
+// 入力した人で絞る(2026-10-28 0911): 全員の記録の時だけ。プルダウン(すべて/名前/名前の無い人は ID 6けた)と検索の欄(打つとプルダウンの中身がその場で絞られる)
+// 選ぶと、一覧・地図・集計・えさ場がその人の記録だけになる(件数・さくら耳などの絞り込みと一緒に効く)。名前は受け付けが全員の記録の時だけ返す(names)
+let whoPick = '', whoQ = '';
+const nameOf = id => (id && allView && allView.names && allView.names[id]) || '';
+const whoKey = x => x.mine ? String(auth && auth.recorderId || '') : String(x.recorderId || '');
+const byWho = x => !(scope === 'all' && whoPick) || whoKey(x) === whoPick;
+const whoLabelOf = id => { const n = nameOf(id), me = auth && auth.recorderId === id; return (me ? '自分' + (n ? '(' + n + ')' : '') : n || 'ID ' + id.slice(0, 6)); };
+function whoPeople() {
+  const ids = new Set(auth && auth.recorderId ? [String(auth.recorderId)] : []);   // 全員の記録・えさ場に出てくる人(と自分)
+  for (const x of [...(allView ? allView.records : []), ...(allView ? allView.sites : [])]) if (x.recorderId) ids.add(String(x.recorderId));
+  return [...ids].map(id => ({ id, label: whoLabelOf(id) })).sort((a, b) => (b.id === String(auth && auth.recorderId)) - (a.id === String(auth && auth.recorderId)) || a.label.localeCompare(b.label, 'ja'));
+}
+function renderWhoOpts() {
+  const sel = document.querySelector('#who-pick'); if (!sel) return;
+  const people = whoPeople(), q = whoQ.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (whoPick && !people.some(p => p.id === whoPick)) whoPick = '';   // 取り直して、その人がいなくなった時
+  const hit = p => !q || nameOf(p.id).toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || p.label.toLowerCase().includes(q);
+  const shown = people.filter(p => hit(p) || p.id === whoPick);   // 選んでいる人は、検索で外れてもプルダウンに残す(見ている記録が急に変わらないように)
+  sel.innerHTML = `<option value="">すべての人(${people.length}人)</option>` + shown.map(p => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('');
+  sel.value = whoPick;
+  const n = people.filter(hit).length;
+  $('#who-found').textContent = whoPick ? `${whoLabelOf(whoPick)}の記録だけを出しています` : q ? (n ? `${people.length}人のうち ${n}人が当てはまります。プルダウンから選んでください` : '当てはまる人はいません') : '';
+  if ($('#who-q').value !== whoQ) $('#who-q').value = whoQ;
 }
 async function setScope(sc, quiet) {
   if (sc === 'all') {
@@ -1024,13 +1075,13 @@ async function setScope(sc, quiet) {
       else toast(errText(r.error), 5000);
       scope = 'mine'; allView = null; renderScopeBar(); renderActiveTab(); return;
     }
-    allView = { records: r.records || [], sites: r.sites || [] }; scope = 'all';
-  } else { scope = 'mine'; allView = null; if (!quiet) reauth = null; }
+    allView = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {} }; scope = 'all';
+  } else { scope = 'mine'; allView = null; whoPick = ''; whoQ = ''; if (!quiet) reauth = null; }
   renderScopeBar(); if (!quiet) renderActiveTab();
 }
 // 全員の写しに、端末の自分の物を重ねる(送っていない物・直した物・消した物も今の形で出る。前は切り替えた時の写しだけで、後から保存した猫が集計に入らなかった)
 const mergeMine = (remote, local) => { const ids = new Set(local.map(x => x.id)); return [...remote.filter(x => !(x.mine && ids.has(x.id))), ...local.map(x => ({ ...x, mine: true }))]; };
-const viewAllRecords = async () => scope === 'all' && allView ? mergeMine(allView.records, await allRecords()) : allRecords();   // 削除した物も含む
+const viewAllRecords = async () => scope === 'all' && allView ? mergeMine(allView.records, await allRecords()).filter(byWho) : allRecords();   // 削除した物も含む。入力した人を選んでいる時は、その人の物だけ
 const viewAllSites = async () => scope === 'all' && allView ? mergeMine(allView.sites, await allSites()) : allSites();
 const viewRecords = async () => (await viewAllRecords()).filter(r => !r.deleted);   // 一覧・地図・集計は、削除した物を出さない
 const viewSites = async () => (await viewAllSites()).filter(x => !x.deleted);
@@ -1043,7 +1094,7 @@ async function recById(id) {
   return getRecord(id);
 }
 const siteNameOf = (id, sm) => id ? ((sm.get(id) || {}).name || 'えさ場(見つかりません)') : '';
-const whoText = r => r.recorderId ? `入力者 ID ${String(r.recorderId).slice(0, 6)}` : '';
+const whoText = r => r.recorderId ? (nameOf(r.recorderId) ? `入力者 ${nameOf(r.recorderId)}` : `入力者 ID ${String(r.recorderId).slice(0, 6)}`) : '';   // 名前があれば名前(全員の記録の時だけ来る)
 
 // ---- 一覧 ----
 let listFilter = 'all', listUrls = [];   // 2026-10-26 0002: 開いた時は「すべて」(未送信は上の件数の印と、切り替えで見る)
@@ -1079,7 +1130,7 @@ async function renderList() {
   const keys = [...groups.keys()].sort((a, b) => a === '' ? 1 : b === '' ? -1 : siteNameOf(a, sm).localeCompare(siteNameOf(b, sm), 'ja'));
   const gHtml = k => { const list = groups.get(k), name = k ? siteNameOf(k, sm) : 'えさ場なし';
     return `<details class="sgroup${k ? '' : ' sgnone'}" data-gk="${esc(k)}"${listOpen.has(k) ? ' open' : ''}><summary>${k ? '<span class="siteicon sm" aria-hidden="true"></span>' : '<svg class="ic md" aria-hidden="true"><use href="#i-map"/></svg>'}<span class="sgname">${esc(name)}</span><span class="sgn">${list.length}頭</span><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg></summary><div class="sgbody">${list.map(itemHtml).join('')}</div></details>`; };
-  $('#list').innerHTML = (rs.length ? keys.map(gHtml).join('') : `<p>${listChip === 'all' ? '記録はまだありません' : '当てはまる猫はいません'}</p>`)
+  $('#list').innerHTML = (rs.length ? keys.map(gHtml).join('') : `<p>${listChip === 'all' ? (all && whoPick ? 'この人の記録はありません' : '記録はまだありません') : '当てはまる猫はいません'}</p>`)
     + (gone.length ? `<details class="card gonebox"><summary>削除したもの(${gone.length}件)</summary><p class="note">削除してから30日の間は、元に戻せます。</p>${gone.map(r => `<div class="item gone"><div><b>${esc(colorText(r))}</b> さくら耳:${esc(r.ear)} ${delMark(r)}<br><span class="note">${fmt(r.time)}</span><br><button type="button" class="small" data-restore="${esc(r.id)}">元に戻す</button></div></div>`).join('')}</details>` : '');
   phWatch($('#list'));
 }
@@ -1155,11 +1206,11 @@ async function locateMe(auto) {
 }
 async function renderMap() {
   initMap(); if (!map) return; layer.clearLayers();
-  const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x]));
+  const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x])), rsAll = await viewRecords(), withCat = new Set(rsAll.map(r => r.siteId).filter(Boolean));
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
-  (await viewRecords()).filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${colorText(r)}` })
+  rsAll.filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${colorText(r)}` })
     .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${scope === 'all' ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
-  liveSites(sites).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
+  liveSites(sites).filter(x => byWho(x) || withCat.has(x.id)).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
     .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${scope === 'all' && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
 }
@@ -1182,7 +1233,7 @@ function statTable(title, head, rows) {
     <p class="note">さくら耳ありの割合 = さくら耳ありの頭数 ÷(今いる猫 − さくら耳 確認できず)。確認できなかった猫は割合の計算に入れていません。手術済み = 不妊手術が「済み」の猫(さくら耳が右か左の猫と、耳の印が無くても手術済みと分かった猫)。手術済みの割合 = 手術済みの頭数 ÷(今いる猫 − 手術が「分からない」猫)。いなくなった猫は「いなくなった(頭)」の列だけに数えます。</p>` : '<p>まだ記録がありません</p>'}</div>`;
 }
 async function renderStats() {
-  const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? '全員' : '自分';
+  const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? (whoPick ? whoLabelOf(whoPick) : '全員') : '自分';
   const bySite = [...tally(rs, r => r.siteId || '').entries()].map(([k, a]) => [k ? siteNameOf(k, sm) + (sm.get(k) && sm.get(k).retired ? '(使っていない)' : '') : NO_SITE_ROW, a]).sort((a, b) => (a[0] === NO_SITE_ROW) - (b[0] === NO_SITE_ROW) || a[0].localeCompare(b[0], 'ja'));
   const byMesh = [...tally(rs, meshOf).entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, a]) => [meshLabel(k), a]);
   const gr = new Map(); rs.filter(isGone).forEach(r => { const k = goneReasonText(r.goneReason) || '理由なし'; gr.set(k, (gr.get(k) || 0) + 1); });
@@ -1194,8 +1245,9 @@ async function renderStats() {
 
 // ---- えさ場の画面 ----
 async function renderSites() {
-  const all = scope === 'all', every = await viewAllSites(), sites = every.filter(x => !x.deleted), rs = await viewRecords(), cnt = new Map();
+  const all = scope === 'all', rs = await viewRecords(), cnt = new Map();
   rs.forEach(r => { if (r.siteId) cnt.set(r.siteId, (cnt.get(r.siteId) || 0) + 1); });
+  const every = (await viewAllSites()).filter(x => byWho(x) || cnt.has(x.id)), sites = every.filter(x => !x.deleted);   // 入力した人を選んでいる時: その人が登録したえさ場と、その人の猫がいるえさ場
   $('#sitehead').classList.toggle('hidden', all);
   const card = x => {
     const own = !all || x.mine !== false, pend = x.status === 'pending' ? '未送信' : (x.ops || []).length ? '送信待ちの直しあり' : '送信済み';
@@ -1207,7 +1259,7 @@ async function renderSites() {
   const goneCard = x => `<div class="card site gone" data-id="${esc(x.id)}" data-owner="${esc(x.mine === false ? x.recorderId : '')}"><b>${esc(x.name)}</b> ${delMark(x)}${all && x.mine === false ? `<br><span class="note">${esc(whoText(x))}</span>` : ''}
     <div class="row">${canRestore(x) ? '<button type="button" class="small" data-act="undel">元に戻す</button>' : '<span class="note">30日を過ぎたので戻せません</span>'}</div></div>`;
   const live = liveSites(sites).sort((a, b) => a.name.localeCompare(b.name, 'ja')), off = sites.filter(x => x.retired).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
-  $('#sitelist').innerHTML = (live.length ? live.map(card).join('') : `<p>${all ? 'えさ場はまだありません' : 'えさ場はまだありません。上のボタンで登録できます'}</p>`) + (off.length ? `<h3>使っていないえさ場</h3>${off.map(card).join('')}` : '')
+  $('#sitelist').innerHTML = (live.length ? live.map(card).join('') : `<p>${all ? (whoPick ? 'この人のえさ場はありません' : 'えさ場はまだありません') : 'えさ場はまだありません。上のボタンで登録できます'}</p>`) + (off.length ? `<h3>使っていないえさ場</h3>${off.map(card).join('')}` : '')
     + (gone.length ? `<details class="card gonebox"${all ? ' open' : ''}><summary>削除したえさ場(${gone.length}か所)</summary><p class="note">削除してから30日の間は、元に戻せます(猫の結び付きは戻りません。「間違いを直す」で付け直せます)。</p>${gone.map(goneCard).join('')}</details>` : '');
 }
 async function startSiteHere(after) {
@@ -1718,14 +1770,17 @@ async function renderAdmin() {
   adminData = r;
   const people = r.recorders.slice().sort((a, b) => (a.type === 'card') - (b.type === 'card') || (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
   const person = x => {
-    const title = x.type === 'card' ? esc(x.name || '(呼び名なし)') : (adminShow.has(x.key) ? esc(x.email) : esc(x.masked));
+    const mail = adminShow.has(x.key) ? esc(x.email) : esc(x.masked);
+    const title = x.type === 'card' ? esc(x.name || '(呼び名なし)') : (x.name ? esc(x.name) : mail);   // 名前があれば名前(2026-10-28 0910。Google の人にも)
     const last = x.lastUsed ? fmtShort(x.lastUsed) : (x.firstLogin ? fmtShort(x.firstLogin) : 'まだ使っていない');
     return `<div class="card person${x.stopped ? ' stopped' : ''}" data-key="${esc(x.key)}">
       <div class="ptop"><b class="pname">${title}</b><span class="mark ${x.type === 'card' ? 'chg' : 'edit'}">${x.type === 'card' ? 'カード' : 'Google'}</span>${x.type === 'google' ? `<button type="button" class="tiny" data-act="peek">${adminShow.has(x.key) ? '隠す' : 'メールを見る'}</button>` : ''}</div>
+      ${x.type === 'google' && x.name ? `<div class="note pmail">${mail}</div>` : ''}
       <div class="note">${x.type === 'card' ? `番号を間違えた回数: ${x.fails}${x.roleIgnored ? '・シートの役割は無視されます' : ''}` : `役割: <select class="rolesel" data-act="role" aria-label="役割">${ROLE_OPTIONS(x.role)}</select>`}
       <br>状態: <b>${x.stopped ? esc('止めた' + (x.state && x.state !== '止めた' ? '(' + x.state + ')' : '')) : '使える'}</b>・最後に使った: ${esc(last)}${x.recorderId ? `・ID ${esc(String(x.recorderId).slice(0, 6))}` : ''}</div>
-      <div class="row"><button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}</div></div>`; };
-  box.innerHTML = `<div class="card"><h3>Google の人を登録</h3><p class="note">Google アカウントで入力する人。メールアドレスと役割を入れます(メールはこの画面でも伏字で出ます)。</p>
+      <div class="row"><button type="button" class="small" data-act="rename">名前を変える</button><button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}</div></div>`; };
+  box.innerHTML = `<div class="card"><h3>Google の人を登録</h3><p class="note">Google アカウントで入力する人。メールアドレスと役割を入れます(メールはこの画面でも伏字で出ます)。名前(例: 東町Bさん)を入れると、一覧と全員の記録で、その名前で出ます(空でもよい・あとで変えられます)。</p>
+      <label class="fl">名前(なくてもよい)<input id="ad-gname" type="text" maxlength="20" autocomplete="off" placeholder="例: 東町Bさん"></label>
       <label class="fl">メールアドレス<input id="ad-email" type="email" inputmode="email" autocomplete="off" placeholder="例: taro@example.com"></label>
       <label class="fl">役割<select id="ad-role" class="rolesel wide">${ROLE_OPTIONS('')}</select></label>
       <button type="button" id="ad-add" class="wide">この人を登録する</button></div>
@@ -1733,13 +1788,33 @@ async function renderAdmin() {
       <label class="fl">呼び名<input id="ad-name" type="text" maxlength="20" autocomplete="off" placeholder="例: 東町Aさん"></label>
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
-    <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}
+    <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>
+    ${people.length ? `<div class="card pfind"><label class="fl">名前か ID で探す<input id="ad-q" type="search" autocomplete="off" placeholder="名前か ID の一部" value="${esc(adminFind.q)}"></label>
+      <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
+    <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
     <div class="card"><p class="note">カードの人は、入力と自分の記録だけができます(役割は付けられません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
       <button type="button" id="ad-wipe" class="wide danger">試しの記録をすべて消す…</button></div>`;
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
+  adminPeople = people;
+  if ($('#ad-q')) { $('#ad-q').oninput = () => { adminFind.q = $('#ad-q').value; adminFilter(); }; $('#ad-pick').onchange = () => { adminFind.pick = $('#ad-pick').value; adminFilter(); }; adminFilter(); }
+}
+// 一覧の絞り込み(2026-10-28 0910): 検索の欄(名前か ID の一部)で、プルダウンの中身と一覧をその場で絞る。プルダウンで1人を選ぶと、その人だけ出す
+const pickLabel = x => x.name || (x.recorderId ? 'ID ' + String(x.recorderId).slice(0, 6) : x.masked || '(名前なし)');
+let adminPeople = [], adminFind = { q: '', pick: '' };
+function adminFilter() {
+  const sel = $('#ad-pick'); if (!sel) return;
+  const q = adminFind.q.replace(/\s+/g, ' ').trim().toLowerCase();
+  const hit = x => !q || (x.name || '').toLowerCase().includes(q) || String(x.recorderId || '').toLowerCase().includes(q);
+  const shown = adminPeople.filter(hit);
+  if (adminFind.pick && !shown.some(x => x.key === adminFind.pick)) adminFind.pick = '';   // 選んでいた人が検索で外れたら「全員」に戻す
+  sel.innerHTML = `<option value="">${q ? `見つかった人すべて(${shown.length}人)` : `全員(${shown.length}人)`}</option>` + shown.map(x => `<option value="${esc(x.key)}">${esc(pickLabel(x))}${x.type === 'card' ? '(カード)' : ''}</option>`).join('');
+  sel.value = adminFind.pick;
+  const keys = new Set(adminFind.pick ? [adminFind.pick] : shown.map(x => x.key));
+  document.querySelectorAll('#ad-people .person').forEach(el => { el.hidden = !keys.has(el.dataset.key); });
+  $('#ad-found').textContent = q || adminFind.pick ? `${adminPeople.length}人のうち ${keys.size}人を出しています` : '';
 }
 // ---- 試しの記録をすべて消す(2026-10-26 0821。管理者だけ)。2回確かめる(2回目は「消す」と打つ)。押した端末の記録も消す(未送信の物は既定で捨てる・残すも選べる)。ほかの端末は次の取り直しで消えた形になる ----
 async function openWipe() {
@@ -1805,9 +1880,10 @@ async function adminClick(b, e) {
   if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-bugs') return openBugAdmin();
   if (b.id === 'ad-add') {
-    const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
-    const r = await adminApi('adminAddGoogle', { email, role }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
-    toast(`登録しました(${r.recorder.masked})`); return renderAdmin();
+    const email = $('#ad-email').value.trim(), role = $('#ad-role').value, name = $('#ad-gname').value.replace(/\s+/g, ' ').trim(); if (!email) return toast('メールアドレスを入れてください');
+    if (name.length > 20) return toast('名前は20字までです');
+    const r = await adminApi('adminAddGoogle', { email, role, name }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
+    toast(`登録しました(${r.recorder.name ? r.recorder.name + '・' : ''}${r.recorder.masked})`); return renderAdmin();
   }
   if (b.id === 'ad-card') {
     const name = $('#ad-name').value.replace(/\s+/g, ' ').trim(), pin = $('#ad-pin').value;
@@ -1818,7 +1894,8 @@ async function adminClick(b, e) {
     return showCardResult({ secret: r.secret, name: r.recorder.name, pin, fresh: true });
   }
   const card = e.target.closest('.person'); if (!card || !adminData) return; const key = card.dataset.key, x = adminData.recorders.find(p => p.key === key); if (!x) return;
-  const act = b.dataset.act, label = x.type === 'card' ? x.name : x.masked;
+  const act = b.dataset.act, label = x.type === 'card' ? x.name : (x.name || x.masked);
+  if (act === 'rename') return openNameForm(x);
   if (act === 'peek') { if (adminShow.has(key)) adminShow.delete(key); else adminShow.add(key); return renderAdmin(); }
   if (act === 'stop' || act === 'restore') {
     const stopped = act === 'stop';
@@ -1838,6 +1915,23 @@ async function onAdminChange(e) {
   sel.disabled = true; const r = await adminApi('adminSetRole', { key, role: sel.value }); sel.disabled = false;   // 返事が来るまで選び直せない
   if (!r.ok) { toast(errText(r.error), 5000); sel.value = x.role; return; }
   toast(r.unchanged ? '変わっていません' : `役割を「${ROLE_LABEL(sel.value)}」にしました`); renderAdmin();
+}
+// 名前を変える小さな画面(2026-10-28 0910。カード・Google のどちらも。Google の人は空にもできる)
+function openNameForm(x) {
+  const card = x.type === 'card';
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>名前を変える</b></div>
+  <div class="sheetbody"><div class="card"><p class="note">${card ? 'カードの人の呼び名です。ログインした時にこの名前で出ます(空にはできません)。' : `${esc(x.masked)} の人の名前です。空にすると、名前なし(ID で出る)に戻ります。`}全員の記録を見られる人には、この名前で出ます。</p>
+  <label class="fl">名前(20字まで)<input id="nf-name" type="text" maxlength="20" autocomplete="off" value="${esc(x.name || '')}" placeholder="例: 東町Bさん"></label>
+  <p id="nf-msg" class="warn hidden"></p>
+  <button type="button" id="nf-go" class="primary">この名前にする</button><button type="button" id="nf-cancel" class="wide">やめる</button></div></div>`);
+  const msg = t => { const el = $('#nf-msg'); el.textContent = t; el.classList.toggle('hidden', !t); };
+  $('#s-back').onclick = $('#nf-cancel').onclick = () => closeSheet();
+  $('#nf-go').onclick = e => busy(e.currentTarget, async () => {
+    const name = $('#nf-name').value.replace(/\s+/g, ' ').trim();
+    if (card && !name) return msg('カードの人の呼び名は空にできません'); if (name.length > 20) return msg('名前は20字までです');
+    const r = await adminApi('adminSetName', { key: x.key, name }); if (!r.ok) return msg(errText(r.error));
+    closeSheet(); toast(r.unchanged ? '変わっていません' : name ? `名前を「${name}」にしました` : '名前を消しました'); renderAdmin();
+  }, '変えています…');
 }
 // 暗証番号を1つ聞く小さな画面(管理の操作)
 function openPinForm({ title, note, button, onsubmit }) {
@@ -1882,7 +1976,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v33';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v35';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2243,6 +2337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-pickok').onclick = () => { if (!pickPin) return; const p = pickPin.getLatLng(), c = pickCtx; setPicking(false); if (c) c.ok(p.lat, p.lng); };
   $('#btn-pickcancel').onclick = () => { const c = pickCtx, back = pickTarget === 'site' ? 'sites' : 'record'; setPicking(false); if (c) c.cancel(); else showTab(back); };
   $('#btn-here').onclick = () => locateMe(false);
+  if (document.querySelector('#who-q')) { $('#who-q').oninput = () => { whoQ = $('#who-q').value; renderWhoOpts(); }; $('#who-pick').onchange = () => { whoPick = $('#who-pick').value; renderWhoOpts(); renderActiveTab(); }; }
   $('#scopebar').onclick = e => { const b = e.target.closest('button[data-scope]'); if (b) busy(b, () => setScope(b.dataset.scope), b.textContent); };
   $('#showdel').onchange = e => { showDeleted = e.target.checked; setScope('all'); };   // 管理者の「削除済みも見る」
   $('#sitesel').onchange = e => onSitePick(e.target.value);
@@ -2290,7 +2385,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (CONF.SHOW_DEMO || new URLSearchParams(location.search).has('demo')) $('#btn-demo').classList.remove('hidden');
   $('#btn-demo').onclick = demo;
   $('#btn-clear').onclick = async () => { if (confirm('この端末の記録を、すべて消します。よろしいですか?')) { await clearAll(); await updateBadge(); renderList(); toast('消しました'); } };
-  window.addEventListener('online', () => { toast('電波が戻りました。未送信を送ります'); syncQuiet(); refreshMeta(); });
+  window.addEventListener('online', () => { toast('電波が戻りました。未送信を送ります'); syncQuiet(); refreshMeta(); gsiAgain(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') gsiAgain(); });   // 20261028-0840: Google の部品が読めないままなら、画面に戻った時に読み直す
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !autoP && Date.now() - lastRefreshAt >= AUTO_REFRESH_MS) syncQuiet(); });   // 画面に戻ってきた時(前の取り直しから5分以上)
   });
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }

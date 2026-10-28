@@ -52,3 +52,5 @@
 41-dbmsg.png
 61-relogin-all.png
 62-relogin-settings.png
+63-admin-rename.png
+64-who-filter.png

@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v33">
+<meta name="app-ver" content="cat-survey-v35">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=33">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=33">
-<link rel="stylesheet" href="style.css?v=33">
+<link rel="stylesheet" href="lib/leaflet.css?v=35">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=35">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -58,6 +58,7 @@ setTimeout(function () {
 <div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
 <div id="relogin" class="card relogin hidden" role="status"><p><b>全員の記録を見るには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま全員の記録が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
 <div id="delbar" class="hidden"><label class="line chk"><input type="checkbox" id="showdel"><span>削除済みも見る(管理者)</span></label></div>
+<div id="whobar" class="card pfind whobar hidden" role="group" aria-label="入力した人で絞る"><label class="fl">入力した人を探す(名前か ID の一部)<input id="who-q" type="search" autocomplete="off" placeholder="名前か ID の一部"></label><label class="fl">入力した人<select id="who-pick" class="wide"></select></label><p id="who-found" class="note" aria-live="polite"></p></div>
 <section id="tab-home" class="tab active">
   <div class="homecount">
     <div class="hc"><span class="hcl">これまでの登録<br>みんなで</span><span class="hcn"><span id="home-all">—</span><small>頭</small></span></div>
@@ -209,12 +210,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=33"></script>
-<script src="lib/leaflet.markercluster.js?v=33"></script>
-<script src="lib/qr.js?v=33"></script>
-<script src="lib/jsQR.js?v=33"></script>
-<script src="scan.js?v=33"></script>
-<script src="config.js?v=33"></script>
-<script src="app.js?v=33"></script>
+<script src="lib/leaflet.js?v=35"></script>
+<script src="lib/leaflet.markercluster.js?v=35"></script>
+<script src="lib/qr.js?v=35"></script>
+<script src="lib/jsQR.js?v=35"></script>
+<script src="scan.js?v=35"></script>
+<script src="config.js?v=35"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>
