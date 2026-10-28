@@ -12,8 +12,9 @@
 // 20261027-1051: 毛色の見本の写真(img/coat/・14色×小と大×WebP と JPEG)も入れる時に控える(電波なしでも出す)。
 // 20261028 groups-b(v36): グループの画面(ホームの「グループ」・参加用リンク ?join=・一覧/地図/集計のグループ表示)。控えの決まりは前と同じ。
 // 20261029 group-relogin(v37): グループの作る・承認・断る・外す・作り直すの前に、ID トークンが切れていたら、その場に Google のボタンを出す。控えの決まりは前と同じ。
+// 20261029 gas-speed-2b(v38): 一覧の取り直しで、前と同じなら受け付けが中身を返さない(覚えていた答えを使う)。画面と控えの決まりは前と同じ。
 // 20261027-1640: 中身が変わる物(説明書の PDF・使い方の画像・毛色の写真)も「?v=版」付きで読む。同じ名前のまま中身が変わると、古い控えが出続けたため(版が上がれば名前が変わり、必ずネットから取る)。
-const VER = 37, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+const VER = 38, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);

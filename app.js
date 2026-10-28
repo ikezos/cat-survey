@@ -560,6 +560,20 @@ async function api(action, extra = {}, ms) {
   if (r && !r.ok && !/^bug|^adminBug/.test(action) && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`受け付けの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
   return r || { ok: false, error: 'bad_response' };
 }
+// list(2026-10-29 speed-2b): 前の答えの ver を添えて送り、受け付けが「前と同じ」(unchanged)と返したら、覚えていた答えをそのまま使う。
+// 覚えるのは、人・範囲ごとに最後の1つだけ(この画面を開いている間だけ。端末には保存しない)。古い受け付け(ver を返さない)とは今と同じ
+let listMemo = new Map();
+async function listApi(extra = {}) {
+  const key = JSON.stringify([auth && auth.recorderId || '', extra.scope || 'mine', !!extra.includeDeleted]), m = listMemo.get(key);
+  let r = await api('list', m ? { ...extra, ver: m.ver } : extra);
+  if (r && r.ok && r.unchanged === true) {
+    if (m && r.ver === m.ver) return JSON.parse(m.text);   // 中身は前と同じ。覚えていた答えの写しを返す(呼んだ側が書き換えても、覚えた物は変わらない)
+    listMemo.delete(key); r = await api('list', extra);   // 覚えていない ver の「同じ」は使わず、中身を取り直す
+  }
+  if (r && r.ok && typeof r.ver === 'string' && r.ver && !r.unchanged) listMemo.set(key, { ver: r.ver, text: JSON.stringify(r) });
+  else if (r && r.ok) listMemo.delete(key);
+  return r;
+}
 // 送れない時の案内(0821)。送る時(sendNow)は WEAK_TEXT・SRV_TEXT + 端末に残っている旨。押してすぐ結果が要る操作(管理・元に戻す等)は WEAK_TEXT_TRY
 const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = '受け付けが応えません。管理者に知らせてください。';
 const sendErrText = e => NET_ERR.includes(e) ? WEAK_TEXT + '(記録はこの端末に残っています)' : SRV_ERR.includes(e) ? SRV_TEXT + '(記録はこの端末に残っています)' : errText(e);
@@ -731,7 +745,7 @@ async function refreshFromServer(quiet = false) {
   const say = (m, ms) => { if (!quiet) toast(m, ms); $('#sendmsg').textContent = m; };
   if (!configured()) return say(errText('not_configured'), 5000);
   if (!loggedIn()) return say(errText('not_logged_in'), 5000);
-  const res = await api('list');
+  const res = await listApi();
   if (!res.ok) return say(noAnswer(res.error) ? (NET_ERR.includes(res.error) ? (quiet ? WEAK_TEXT : WEAK_TEXT_TRY) : SRV_TEXT) : errText(res.error), 5000);   // 押していない裏の取り直し(quiet)は「もう一度押して」ではなく「つながったら自動で」(0911)
   lastRefreshAt = Date.now();
   applyMeta(res);
@@ -1099,7 +1113,7 @@ async function setScope(sc, quiet) {
     if (!(auth && auth.viewAll)) return;
     if (!navigator.onLine) return toast('電波がありません。「全員の記録」は電波がある所で見られます', 4000);
     if (!quiet && idValid()) toast('全員の記録を取っています…', 2000);   // 確かめが要る時は、取りに行かずに案内の箱を出す
-    const r = await api('list', { scope: 'all', ...(showDeleted && auth.admin ? { includeDeleted: true } : {}) });
+    const r = await listApi({ scope: 'all', ...(showDeleted && auth.admin ? { includeDeleted: true } : {}) });
     if (!r.ok) {
       if (r.error === 'not_allowed') { auth.viewAll = false; saveAuth(); }
       if (r.error === 'id_needed') reauth = 'all';   // その場に Google のボタンを出す(確かめが済んだら、そのまま全員の記録を出す)
@@ -1142,7 +1156,7 @@ const gWhoRead = () => { try { const v = localStorage.getItem(GWHO_KEY); return 
 let gWho = gWhoRead();
 function gWhoSave(v) { gWho = v; try { if (v) localStorage.setItem(GWHO_KEY, v); else localStorage.removeItem(GWHO_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
 const gWhoNow = () => gActive() ? gWho : '';
-function gReset() { gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; gNeed = null; gName = ''; renderHomeGroup(); }
+function gReset() { listMemo.clear(); gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; gNeed = null; gName = ''; renderHomeGroup(); }
 // whoami・groupStatus の返事から、自分のグループ(名前・リーダーか・見られるか)を端末に控える(古い受け付けは group を返さない=何も変えない)
 function takeGroup(g) {
   const ng = g ? { id: String(g.id || ''), name: String(g.name || ''), leader: !!g.leader, view: !!g.view } : null, before = JSON.stringify(auth && auth.group || null);
@@ -1154,7 +1168,7 @@ async function loadGview(force) {
   if (!grpView() || !navigator.onLine || !configured()) return;
   if (!force && gview && Date.now() - gview.at < GVIEW_MS) return;
   if (!gviewP) gviewP = (async () => {
-    const r = await api('list', { scope: 'group' });
+    const r = await listApi({ scope: 'group' });
     if (r.ok) { gview = { records: r.records || [], sites: r.sites || [], names: r.names && typeof r.names === 'object' ? r.names : {}, at: Date.now() }; if (r.group) takeGroup({ ...r.group, view: true }); takeHomeCounts(r); }
     else if (r.error === 'not_in_group') { gview = null; takeGroup(null); }
     else if (r.error === 'card_no_group' && auth.group) { gview = null; takeGroup({ ...auth.group, view: false }); }   // 前の受け付け: カードの人はグループに入ったまま、自分の分だけ
@@ -2317,7 +2331,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v37';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v38';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
