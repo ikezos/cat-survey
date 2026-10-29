@@ -282,7 +282,7 @@ window.onGoogleCredential = async resp => {
   if (auth !== mine) return;   // 使えない人と分かって、もう取り消された(または別のログインに替わった)
   delete mine.pending;
   if (r.ok) { auth.recorderId = r.recorderId; auth.verified = true; applyMeta(r); saveAuth(); renderAuth(); toast('ログインしました'); await syncQuiet(); }
-  else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('受け付けにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
+  else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('サーバーにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
   else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
 // ---- Google でもう一度確かめる(20261027-2326。利用者の声「もう一度ログインと出るが、どこからログインするのか不明」)----
@@ -473,7 +473,7 @@ function renderAuth() {
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
   $('#btn-logout').classList.toggle('hidden', !auth);
   if (window.CardKit) CardKit.refresh();   // 「カードの QR を読む」の置き場所・Android の「ホーム画面に追加」の案内
-  $('#cfginfo').textContent = configured() ? `受け付け: 設定済み(${CONF.GAS_URL.replace(/^https?:\/\//, '').slice(0, 40)}…)` : '受け付け: 未設定(公開の時に設定ファイルに入ります)';
+  $('#cfginfo').textContent = configured() ? `サーバー: 設定済み(${CONF.GAS_URL.replace(/^https?:\/\//, '').slice(0, 40)}…)` : 'サーバー: 未設定(公開の時に設定ファイルに入ります)';
 }
 
 // ---- 選択肢(受け付けの「選択肢」シートで変わる)と役割 ----
@@ -557,7 +557,7 @@ async function api(action, extra = {}, ms) {
   if (r && !isCard() && viaPass && r.error === 'pass_invalid') { auth.pass = ''; auth.passExp = 0; saveAuth(); renderAuth(); return r; }   // Google の人の通行証が使えない(期限切れ・登録から外された)→ 通行証を捨て、Google でログインし直してもらう
   if (r && !isCard() && ['token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token'].includes(r.error)) { auth.idToken = ''; delete auth.pending; saveAuth(); renderAuth(); }
   if (r && DENY.includes(r.error) && auth) denyAccess(r.error);
-  if (r && !r.ok && !/^bug|^adminBug/.test(action) && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`受け付けの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
+  if (r && !r.ok && !/^bug|^adminBug/.test(action) && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`サーバーの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
   return r || { ok: false, error: 'bad_response' };
 }
 // list(2026-10-29 speed-2b): 前の答えの ver を添えて送り、受け付けが「前と同じ」(unchanged)と返したら、覚えていた答えをそのまま使う。
@@ -575,7 +575,7 @@ async function listApi(extra = {}) {
   return r;
 }
 // 送れない時の案内(0821)。送る時(sendNow)は WEAK_TEXT・SRV_TEXT + 端末に残っている旨。押してすぐ結果が要る操作(管理・元に戻す等)は WEAK_TEXT_TRY
-const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = '受け付けが応えません。管理者に知らせてください。';
+const WEAK_TEXT = '電波が弱いようです。つながったら自動で送ります。', WEAK_TEXT_TRY = '電波が弱いようです。電波のよい所で、もう一度押してください。', SRV_TEXT = 'サーバーが応えません。管理者に知らせてください。';
 const sendErrText = e => NET_ERR.includes(e) ? WEAK_TEXT + '(記録はこの端末に残っています)' : SRV_ERR.includes(e) ? SRV_TEXT + '(記録はこの端末に残っています)' : errText(e);
 const ERR_TEXT = {
   not_configured: '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。', not_logged_in: 'Google でログインするか、ログインカードをかざして(QR を読んで)ください。',
@@ -585,12 +585,12 @@ const ERR_TEXT = {
   bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前(呼び名)は20字までで入れてください(カードの人は空にできません)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
   network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
-  server_not_configured: '受け付け側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
-  busy: '受け付けが混んでいます。少し待ってもう一度送ってください。',
+  server_not_configured: 'サーバー側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
+  busy: 'サーバーが混んでいます。少し待ってもう一度送ってください。',
   timeout: WEAK_TEXT_TRY,
-  already_done: 'この操作は、もう受け付けで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
+  already_done: 'この操作は、もうサーバーで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
   deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。管理者に相談してください)。',
-  id_needed: '全員の記録・管理は、Google でもう一度確かめてから使えます。画面に出る Google のボタン(または設定の「Google でもう一度ログイン」)を押してください。', card_no_all: '全員の記録は、Google でログインした人だけが見られます(ログインカードでは、自分の記録だけです)。', not_found: 'これは受け付けに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: '受け付けがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
+  id_needed: '全員の記録・管理は、Google でもう一度確かめてから使えます。画面に出る Google のボタン(または設定の「Google でもう一度ログイン」)を押してください。', card_no_all: '全員の記録は、Google でログインした人だけが見られます(ログインカードでは、自分の記録だけです)。', not_found: 'これはサーバーに見つかりません(自分の記録・えさ場だけ直せます)。', not_allowed: 'この操作は、今のアカウントでは使えません(役割がありません)。', bad_site: 'そのえさ場は使えません(自分の、使っているえさ場だけ選べます)。', unknown_action: 'サーバーがまだ新しくなっていません(管理者へ連絡してください)。この端末に貯めた分は残っています。',
 };
 Object.assign(ERR_TEXT, {   // グループ(2026-10-28 その2)
   already_in_group: 'すでにグループに入っています(入れるグループは1つだけです)。', already_requested: 'すでに参加を申し込んでいます(承認待ち)。取り消してから、もう一度申し込めます。',
@@ -707,7 +707,7 @@ async function sendNow(quiet) {
     const smsg = (seenCut ? `見かけた時刻が受け付けられなかった登録${seenCut}件は、時刻を外して(記録した時刻で)送りました。` : '') + (held ? `${SIGHT_HELD_TEXT}「また見かけた」が${held}件あります(この端末に残っています。消すこともできます)。` : '');   // seen-time-3
     if (lastErr) { say((sent ? `${sent}件を送りました。` : '') + smsg + sendErrText(lastErr), 7000); if (noAnswer(lastErr)) retryLater(); }
     else {
-      const dmsg = dropped.length || smsg ? (sent ? `${sent}件を送りました。` : '') + smsg + (dropped.length ? `受け付けが受け付けなかった直し・変化が${dropped.length}件あります(${errText(dropped[0])})` : '') : '';
+      const dmsg = dropped.length || smsg ? (sent ? `${sent}件を送りました。` : '') + smsg + (dropped.length ? `サーバーが受け付けなかった直し・変化が${dropped.length}件あります(${errText(dropped[0])})` : '') : '';
       say(dmsg || `${sent}件を送りました(送信済み)`, dmsg ? 7000 : 3500);
       await refreshFromServer(true);
       if (dmsg) $('#sendmsg').textContent = dmsg;   // 取り直しの案内で上書きされないように
@@ -784,7 +784,7 @@ async function refreshFromServer(quiet = false) {
   if (queued) sendPending(true);   // 端末に残っていた削除・直しを、続けて送る(送っている最中なら、終わった後に)
   if (auth && auth.recorderId !== res.recorderId) { auth.recorderId = res.recorderId; saveAuth(); renderAuth(); }
   await updateBadge();
-  say(`自分の記録 ${res.records.filter(r => !r.deleted).length}件を受け付けから取り直しました`);
+  say(`自分の記録 ${res.records.filter(r => !r.deleted).length}件をサーバーから取り直しました`);
   if (scope === 'all') await setScope('all', true);   // 「全員の記録」を見ている時は、全員の写しも取り直す(前は切り替えた時の古い写しのままだった)
   renderActiveTab();
   return res;
@@ -1413,8 +1413,8 @@ async function renderList() {
   const itemHtml = r => {
     let img = ''; if (r.photos && r.photos[0]) { const u = URL.createObjectURL(r.photos[0]); listUrls.push(u); img = `<img src="${u}" class="zoomable" data-zoom-id="${esc(r.id)}" alt="写真(押すと大きく見られます)">`; }
     else if (phNeeds(r)) img = rphHtml(r, 1).replace('class="rph"', `class="rph" data-rph-count="${Number(r.photoCount)}"`);   // 他の端末の記録: 見えたら受け付けから小さい版を取る(1800)
-    const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : '');
-    const st = all || (wv && (r.mine === false || !r.status)) ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
+    const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(サーバー側)` : '');
+    const st = all || (wv && (r.mine === false || !r.status)) ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(サーバーから取り直した記録)</span>' : ''}`;
     return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''} さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}<br>
     <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br><span class="note lastseen">${esc(lastSeenText(r))}</span><br>
     ${st} ${esc(r.feature || '')}${!all && !r.deleted && (!wv || (r.mine !== false && r.status)) ? `<br><button type="button" class="small chgbtn" data-change="${esc(r.id)}"><svg class="ic sm" aria-hidden="true"><use href="#i-change"/></svg>この猫の状態を変える</button>` : ''}</div></div>`; };
@@ -1512,32 +1512,27 @@ async function renderMap() {
   setTimeout(() => map.invalidateSize(), 50);
 }
 
-// ---- 集計(自分の記録だけ。全員の記録に切り替えた時は全員分)----
-function tally(rs, keyFn) {
-  const by = new Map();
-  rs.forEach(r => { const k = keyFn(r), a = by.get(k) || { n: 0, ear: 0, no: 0, unk: 0, done: 0, nunk: 0, pet: 0, gone: 0 }; if (isGone(r)) { a.gone++; by.set(k, a); return; } a.n++; if (hasEar(r)) a.ear++; else if (r.ear === 'なし') a.no++; if (r.ear === UNKNOWN_EAR) a.unk++; const nu = effNeuter(r); if (nu === NEUTER_DONE) a.done++; else if (nu === NEUTER_UNKNOWN) a.nunk++; if (effPet(r) === 'あり') a.pet++; by.set(k, a); });
-  return by;
+// ---- 集計(2026-10-29 簡単に: 今いる猫・手術が済んでいる頭数と割合・いなくなった数の3つだけ。区画ごとなどの細かい集計は受け付けのスプレッドシートで)----
+function statCount(rs) {
+  let n = 0, done = 0, gone = 0;
+  rs.forEach(r => { if (isGone(r)) { gone++; return; } n++; if (effNeuter(r) === NEUTER_DONE) done++; });
+  return { n, done, gone, pct: n ? Math.round(done / n * 100) + '%' : '—' };
 }
-// 集計の表(2026-10-26 作り直し): 1行=1つのえさ場(または区画)・いちばん下に合計。見出しは「何が」を必ず入れる
-const STAT_COLS = ['今いる猫(頭)', 'さくら耳あり(頭)', 'さくら耳なし(頭)', 'さくら耳 確認できず(頭)', 'さくら耳ありの割合', '手術済み(頭)', '手術済みの割合', '飼い猫の可能性あり(頭)', 'いなくなった(頭)'];   // 2026-10-26 1355: 手術済み・その割合を足した。2026-10-26 0002: 今いる猫で数え、いなくなった猫は右の列だけ
-const NO_SITE_ROW = 'えさ場に結び付いていない猫';
-// 区画の名前: 地域メッシュ(500m)の番号 523667052 → 「区画 5236-6705-2(約500m)」
-const meshLabel = m => /^\d{9}$/.test(m) ? `区画 ${m.slice(0, 4)}-${m.slice(4, 8)}-${m.slice(8)}(約500m)` : m ? `区画 ${m}(約500m)` : '区画(位置不明)';
-function statTable(title, head, rows) {
-  const row = (name, a, cls = '') => { const judged = a.n - a.unk; return `<tr${cls ? ` class="${cls}"` : ''}><th scope="row" class="nm">${esc(name)}</th><td>${a.n}</td><td>${a.ear}</td><td>${a.no}</td><td>${a.unk}</td><td>${judged ? Math.round(a.ear / judged * 100) + '%' : '—'}</td><td>${a.done}</td><td>${a.n - a.nunk ? Math.round(a.done / (a.n - a.nunk) * 100) + '%' : '—'}</td><td>${a.pet}</td><td>${a.gone}</td></tr>`; };
-  const tot = rows.reduce((t, [, a]) => ({ n: t.n + a.n, ear: t.ear + a.ear, no: t.no + a.no, unk: t.unk + a.unk, done: t.done + a.done, nunk: t.nunk + a.nunk, pet: t.pet + a.pet, gone: t.gone + a.gone }), { n: 0, ear: 0, no: 0, unk: 0, done: 0, nunk: 0, pet: 0, gone: 0 });
-  return `<div class="card"><h3>${esc(title)}</h3>${rows.length ? `<div class="statwrap"><table class="stat"><thead><tr><th scope="col" class="nm">${esc(head)}</th>${STAT_COLS.map(c => `<th scope="col">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(([k, a]) => row(k, a)).join('')}${row('合計', tot, 'total')}</tbody></table></div>
-    <p class="note">さくら耳ありの割合 = さくら耳ありの頭数 ÷(今いる猫 − さくら耳 確認できず)。確認できなかった猫は割合の計算に入れていません。手術済み = 不妊手術が「済み」の猫(さくら耳が右か左の猫と、耳の印が無くても手術済みと分かった猫)。手術済みの割合 = 手術済みの頭数 ÷(今いる猫 − 手術が「分からない」猫)。いなくなった猫は「いなくなった(頭)」の列だけに数えます。</p>` : '<p>まだ記録がありません</p>'}</div>`;
+// えさ場ごとの表(2026-10-29 戻した): 5列だけ。行の合計 = 上の3つの数。えさ場なしは最後
+const NO_SITE_ROW = 'えさ場なし';
+function siteRows(rs, sm) {
+  const by = new Map();
+  rs.forEach(r => { const k = r.siteId || '', a = by.get(k) || []; a.push(r); by.set(k, a); });
+  return [...by.entries()].map(([k, list]) => [k ? siteNameOf(k, sm) + (sm.get(k) && sm.get(k).retired ? '(使っていない)' : '') : NO_SITE_ROW, statCount(list)])
+    .sort((a, b) => (a[0] === NO_SITE_ROW) - (b[0] === NO_SITE_ROW) || a[0].localeCompare(b[0], 'ja'));
 }
 async function renderStats() {
-  const rs = await viewRecords(), sites = await viewAllSites(), sm = new Map(sites.map(x => [x.id, x])), who = scope === 'all' ? (grpNow() ? (grpNow() === AGRP_NONE ? 'グループなしの' : grpNames()[grpNow()] + ' の') : '') + (whoPick ? whoLabelOf(whoPick) : '全員') : gActive() ? (gWhoNow() === 'me' ? '自分' : gWhoNow() ? whoLabelOf(gWhoNow()) : 'グループ全員') : '自分';
-  const bySite = [...tally(rs, r => r.siteId || '').entries()].map(([k, a]) => [k ? siteNameOf(k, sm) + (sm.get(k) && sm.get(k).retired ? '(使っていない)' : '') : NO_SITE_ROW, a]).sort((a, b) => (a[0] === NO_SITE_ROW) - (b[0] === NO_SITE_ROW) || a[0].localeCompare(b[0], 'ja'));
-  const byMesh = [...tally(rs, meshOf).entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([k, a]) => [meshLabel(k), a]);
-  const gr = new Map(); rs.filter(isGone).forEach(r => { const k = goneReasonText(r.goneReason) || '理由なし'; gr.set(k, (gr.get(k) || 0) + 1); });
-  const goneNote = gr.size ? `<p class="note gonereasons">いなくなった理由の内訳: ${[...gr.entries()].map(([k, n]) => `${esc(k)} ${n}頭`).join('、')}</p>` : '';
-  $('#stats').innerHTML = `<p class="statwhat">${who}の記録で数えた表です(削除した記録は除く・今の状態で数える・今いる猫で数え、いなくなった猫は別の列)。</p>` +
-    statTable(`えさ場ごと(${who}の記録)`, 'えさ場', bySite) + statTable(`区画(約500m四方)ごと(${who}の記録)`, '区画', byMesh) + goneNote +
-    `<div class="card"><p class="note">頭数は記録の数です。同じ猫を二度記録していることがあるため、猫の頭数と同じとは限りません。さくら耳は不妊手術が済んだ印です。「飼い猫の可能性あり」は、飼い猫かもしれないと入力された数(首輪がある猫を含む)で、頭数の推定から外したいときは引いて考えます。区画は、緯度経度から自動で付く約500m四方の区画(地域メッシュ)で、番号はその区画の番号です。表は横にすべらせて見られます。${scope === 'all' ? '' : '全体の集計は受け付け側のスプレッドシートで見ます。'}</p></div>`;
+  const rs = await viewRecords(), sm = new Map((await viewAllSites()).map(x => [x.id, x])), who = scope === 'all' ? (grpNow() ? (grpNow() === AGRP_NONE ? 'グループなしの' : grpNames()[grpNow()] + ' の') : '') + (whoPick ? whoLabelOf(whoPick) : '全員') : gActive() ? (gWhoNow() === 'me' ? '自分' : gWhoNow() ? whoLabelOf(gWhoNow()) : 'グループ全員') : '自分';
+  const c = statCount(rs), rows = siteRows(rs, sm), big = (label, val, sub) => `<div class="card statbig"><div class="statlabel">${label}</div><div class="statnum">${val}</div>${sub ? `<div class="statsub">${sub}</div>` : ''}</div>`;
+  $('#stats').innerHTML = `<p class="statwhat">${esc(who)}の記録</p>` +
+    big('今いる猫', `${c.n}<small>頭</small>`) + big('手術が済んでいる猫', `${c.done}<small>頭</small>`, `今いる猫の ${c.pct}`) + big('いなくなった猫', `${c.gone}<small>頭</small>`) +
+    `<div class="card"><h3>えさ場ごと</h3>${rows.length ? `<p class="note">えさ場ごとの頭数です。</p><table class="stat"><thead><tr><th scope="col" class="nm">えさ場</th><th scope="col">今いる</th><th scope="col">手術済み</th><th scope="col">割合</th><th scope="col">いなくなった</th></tr></thead><tbody>${rows.map(([k, a]) => `<tr><th scope="row" class="nm">${esc(k)}</th><td>${a.n}</td><td>${a.done}</td><td>${a.pct}</td><td>${a.gone}</td></tr>`).join('')}</tbody></table>` : '<p class="note">まだ記録がありません</p>'}</div>` +
+    '<div class="card"><p class="note">同じ猫を二度記録していると、二度数えます。くわしい集計は、サーバーのスプレッドシートで見られます。</p></div>';
 }
 
 // ---- えさ場の画面 ----
@@ -1863,7 +1858,7 @@ async function openDetail(id) {
     img = `<img class="dphoto zoomable" src="${us[0]}" data-zoom="0" alt="写真1(押すと大きく見られます)" role="button" tabindex="0">` + (us.length > 1 ? `<div class="dthumbs">${us.map((u, i) => `<img src="${u}" class="zoomable" data-zoom="${i}" alt="写真${i + 1}(押すと大きく見られます)" role="button" tabindex="0">`).join('')}</div>` : '') + '<p class="note">写真を押すと、大きく見られます。</p>';
   } else if (phNeeds(r)) {   // 他の端末で記録した写真: 受け付けから取る(1800)
     const cnt = Number(r.photoCount);
-    img = `<div class="dthumbs rthumbs" data-rph-total="${cnt}">${Array.from({ length: cnt }, (_, i) => rphHtml(r, i + 1)).join('')}</div><p class="note">この記録の写真は、受け付けから読み込みます(通信を使います。一度見た写真は、次から通信なしで出ます)。押すと、大きく見られます。</p>`;
+    img = `<div class="dthumbs rthumbs" data-rph-total="${cnt}">${Array.from({ length: cnt }, (_, i) => rphHtml(r, i + 1)).join('')}</div><p class="note">この記録の写真は、サーバーから読み込みます(通信を使います。一度見た写真は、次から通信なしで出ます)。押すと、大きく見られます。</p>`;
   }
   const ops = opsOf(r), pendingChanges = ops.filter(o => o.type === 'change'), pendingEdits = ops.filter(o => o.type === 'edit').length;
   const chItems = (items, wait) => items.map(i => `<div class="chg-line">${esc(i.label)}: ${esc(i.from || '(未入力)')} → <b>${esc(i.to || '(なし)')}</b>${wait ? ' <span class="st">(送信待ち)</span>' : ''}</div>`).join('');
@@ -1875,9 +1870,9 @@ async function openDetail(id) {
   <div class="card">${img}<h3>${esc(colorText(r))}　さくら耳: ${esc(r.ear)} ${marksHtml(r)}</h3>
     ${isGone(r) ? `<p class="warn away">${esc(goneText(r))}。一覧と地図は、ふだん出しません(「いなくなった猫も見る」で出ます)。</p>` : ''}
     ${rowLine('毛の長さ', effHair(r))}${rowLine('記録した日時', fmt(r.time))}${r.seenAt && r.seenAt !== r.time ? rowLine('見かけた時刻', fmt(r.seenAt)) : ''}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
-    ${rowLine('写真', r.photos && r.photos.length ? r.photos.length + '枚' : r.photoCount ? r.photoCount + '枚(受け付け側)' : '')}
+    ${rowLine('写真', r.photos && r.photos.length ? r.photos.length + '枚' : r.photoCount ? r.photoCount + '枚(サーバー側)' : '')}
     ${all && !own ? '' : `<div class="line2"><span class="lbl">送信</span><span class="st ${unsent ? '' : 'sent'}">${unsent ? '未送信' : '送信済み'}</span></div>`}</div>
-  <div class="card sightcard">${own && !r.deleted ? `<button type="button" id="s-sight" class="act big green">また見かけた<small>${sightOld() ? SIGHT_WAIT + 'です(受け付けが新しくなると使えます)' : 'この猫をまた見かけた時に。時刻と場所を記録します'}</small></button>` : ''}
+  <div class="card sightcard">${own && !r.deleted ? `<button type="button" id="s-sight" class="act big green">また見かけた<small>${sightOld() ? SIGHT_WAIT + 'です(サーバーが新しくなると使えます)' : 'この猫をまた見かけた時に。時刻と場所を記録します'}</small></button>` : ''}
     <details id="s-sightbox"><summary>見かけた記録 ${si.n}回(最後 ${esc(mdhm(si.last))})</summary><div id="s-sightlist" class="sightlist"></div></details></div>
   <div class="card"><h3>これまでの変化(${hist.length}回)</h3>${hist.length ? hist.join('') : '<p class="note">状態の変化はまだ記録されていません。</p>'}
     ${editMarks(r) ? `<p class="note">この記録は、入力のまちがいを${editMarks(r)}回直しています${r.editedAt ? '(最後に直した日時: ' + esc(fmtShort(r.editedAt)) + ')' : ''}${pendingEdits ? `。うち${pendingEdits}回は送信待ちです` : ''}。</p>` : ''}</div>
@@ -1886,7 +1881,7 @@ async function openDetail(id) {
   : own ? `<button type="button" id="s-edit" class="act">間違いを直す<small>入力をまちがえた時。この記録をそのまま書き換えます</small></button>
   <button type="button" id="s-change" class="act orange"${unsent ? ' disabled' : ''}>状態が変わった<small>未手術→手術済み・さくら耳が付いた・えさ場が変わった・いなくなった・戻ってきた など。履歴に足していきます</small></button>
   ${unsent ? '<p class="note">まだ送っていない記録です。「状態が変わった」は、送ってから使えます(間違いは今すぐ直せます)。</p>' : ''}
-  <button type="button" id="s-del" class="wide danger">この記録を削除する</button><p class="note">削除しても、受け付けのシートの行は残ります(「削除済み」の印が付きます)。30日の間は元に戻せます。</p>`
+  <button type="button" id="s-del" class="wide danger">この記録を削除する</button><p class="note">削除しても、サーバーのシートの行は残ります(「削除済み」の印が付きます)。30日の間は元に戻せます。</p>`
     : '<p class="warn">この記録は別の人の物なので、直せません。</p>'}
   </div>`);
   $('#s-back').onclick = closeSheet;
@@ -1907,7 +1902,7 @@ const pushOp = (x, op) => { const ops = opsOf(x), last = ops[ops.length - 1], un
   return last && undo[last.type] === op.type ? ops.slice(0, -1) : [...ops, op]; };   // まだ送っていない「削除」を戻した時は、貯めた「削除」を取り下げるだけ
 async function deleteRecord(id) {
   const r = await getRecord(id); if (!r || r.deleted) return;
-  if (!confirm('本当に消しますか?\nこの猫の記録を、一覧・地図・集計から外します(受け付けのシートの行は残ります)。30日の間は、一覧の下の「削除したもの」から元に戻せます。')) return;
+  if (!confirm('本当に消しますか?\nこの猫の記録を、一覧・地図・集計から外します(サーバーのシートの行は残ります)。30日の間は、一覧の下の「削除したもの」から元に戻せます。')) return;
   const now = new Date().toISOString(), nr = { ...r, deleted: true, deletedAt: now };
   if (r.status === 'sent') nr.ops = pushOp(r, { type: 'delete', opId: newId('o'), queuedAt: now });
   try { await putAll([nr]); } catch (e) { return toast(dbErrText(e), 8000); }
@@ -2116,7 +2111,7 @@ const renderSeen = () => seenPicker($opt('#seenpick'), seenSt);
 // 目撃(また見かけた)。端末に貯めた物は記録の ops に type 'sight'(足す)・'sightDelete'(消す)で入る
 const SIGHT_OPS = ['sight', 'sightDelete'];
 const sightOld = () => { const t = Number(cfg().sightOld) || 0; return t && Date.now() - t < 6 * 3600e3; };   // 受け付けが「また見かけた」をまだ知らない(更新待ち)と分かった時刻(6時間で確かめ直す)
-const SIGHT_WAIT = '受け付けの更新待ち', SIGHT_HELD_TEXT = '見かけた時刻が受け付けられず、送れなかった';   // SIGHT_HELD_TEXT: 端末の時計が大きくずれていた等(seen-time-3)
+const SIGHT_WAIT = 'サーバーの更新待ち', SIGHT_HELD_TEXT = '見かけた時刻が受け付けられず、送れなかった';   // SIGHT_HELD_TEXT: 端末の時計が大きくずれていた等(seen-time-3)
 const sightPending = r => opsOf(r).filter(o => o.type === 'sight');
 // 見かけた回数(登録の1回 + 目撃)と最後に見かけた時刻。受け付けの数 + 送信待ちの目撃 - 送信待ちの「消す」
 function sightInfo(r) {
@@ -2136,7 +2131,7 @@ const LOC_SRC_TEXT = { gps: 'いまの場所', same: '前と同じ場所', map: 
 // また見かけた(詳しい画面の大きいボタンから)。keep = 地図で選んで戻ってきた時の、選びかけの形
 async function openSight(id, keep) {
   const r = await getRecord(id); if (!r || r.deleted) return;
-  if (sightOld()) return toast(`「また見かけた」は、${SIGHT_WAIT}です。受け付けが新しくなると使えます(管理者に知らせてください)。`, 6000);
+  if (sightOld()) return toast(`「また見かけた」は、${SIGHT_WAIT}です。サーバーが新しくなると使えます(管理者に知らせてください)。`, 6000);
   const s = keep || { seen: { mode: 'now' }, loc: '', locSet: false, map: null, id: newId('s') };
   const prev = (() => { const p = sightPending(r).filter(o => isFinite(o.lat)).slice(-1)[0]; return p ? { lat: p.lat, lng: p.lng } : { lat: r.lat, lng: r.lng }; })();
   const autoLoc = () => { if (!s.locSet) s.loc = s.seen.mode === 'now' ? 'gps' : 'same'; };
@@ -2188,12 +2183,12 @@ async function loadSights(r, box) {
   const head = line(r.seenAt || r.time, '記録した場所', whoOf(), ' <span class="st">登録の時</span>');
   const pendHtml = pend.map(o => line(o.seenAt, LOC_SRC_TEXT[o.locSrc] || '', whoOf(), ` <span class="st${o.rejected ? ' bad' : ''}">(${o.rejected ? '送れなかった・見かけた時刻が受け付けられません。消して入れ直してください' : '送信待ち' + (sightOld() ? '・' + SIGHT_WAIT : '')})</span>${own ? ` <button type="button" class="small danger" data-sdel-local="${esc(o.id)}">消す</button>` : ''}`)).join('');
   const show = (srvHtml, note = '') => { box.innerHTML = pendHtml + srvHtml + head + (note ? `<p class="note">${esc(note)}</p>` : ''); };
-  show('', r.status === 'sent' && Number(r.sightCount) ? '受け付けから読み込んでいます…' : '');
+  show('', r.status === 'sent' && Number(r.sightCount) ? 'サーバーから読み込んでいます…' : '');
   if (r.status !== 'sent' || !Number(r.sightCount)) return;
-  if (!configured() || !loggedIn() || !navigator.onLine) return show('', `ほかに受け付けに${r.sightCount}回あります(電波がつながると一覧が出ます)。`);
+  if (!configured() || !loggedIn() || !navigator.onLine) return show('', `ほかにサーバーに${r.sightCount}回あります(電波がつながると一覧が出ます)。`);
   const res = await api('sightList', { recordId: r.id, ...(own ? {} : { ownerId: r.recorderId }) });
   if (sheetId !== r.id) return;
-  if (!res.ok) { if (res.error === 'unknown_action') saveCfg({ sightOld: Date.now() }); return show('', `ほかに受け付けに${r.sightCount}回あります(${res.error === 'unknown_action' ? SIGHT_WAIT : '一覧を読み込めませんでした'})。`); }
+  if (!res.ok) { if (res.error === 'unknown_action') saveCfg({ sightOld: Date.now() }); return show('', `ほかにサーバーに${r.sightCount}回あります(${res.error === 'unknown_action' ? SIGHT_WAIT : '一覧を読み込めませんでした'})。`); }
   show((res.sights || []).filter(x => !dels.has(x.id)).map(x => line(x.seenAt, LOC_SRC_TEXT[x.locSrc] || (isFinite(x.lat) && x.lat !== null ? '場所あり' : '場所なし'), whoOf(), x.mine && own ? ` <button type="button" class="small danger" data-sdel="${esc(x.id)}">消す</button>` : '')).join(''));
 }
 let sightOpen = null;   // 詳しい画面を開き直した時、見かけた記録の一覧を開いたままにする
@@ -2242,7 +2237,7 @@ async function renderAdmin() {
       <label class="fl">メールアドレス<input id="ad-email" type="email" inputmode="email" autocomplete="off" placeholder="例: taro@example.com"></label>
       <label class="fl">役割<select id="ad-role" class="rolesel wide">${ROLE_OPTIONS('')}</select></label>
       <button type="button" id="ad-add" class="wide">この人を登録する</button></div>
-    <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。呼び名(本名でなくてよい。例: 東町Aさん)と、その人に伝える暗証番号(数字4つ)を入れます。合言葉は作った直後の画面に1回だけ出ます(受け付けにもシートにも残りません)。</p>
+    <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。呼び名(本名でなくてよい。例: 東町Aさん)と、その人に伝える暗証番号(数字4つ)を入れます。合言葉は作った直後の画面に1回だけ出ます(サーバーにもシートにも残りません)。</p>
       <label class="fl">呼び名<input id="ad-name" type="text" maxlength="20" autocomplete="off" placeholder="例: 東町Aさん"></label>
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
@@ -2357,7 +2352,7 @@ async function openWipe() {
   showSheet(`<div class="sheethead"><b>試しの記録をすべて消す(1/2)</b></div><div class="sheetbody"><div class="card">
     <p><b>全員の</b>猫の記録・状態の変化・えさ場を消し、写真をドライブのごみ箱へ入れます。</p>
     <p class="note">消えるもの: シートの「記録」「変化」「えさ場」の2行目から下(見出しの行は残ります)・写真のフォルダの中の写真(フォルダは残ります)。<br>残るもの: 「入力者」(登録とカード)・「設定」・「選択肢」・「通行証」(ログインはそのまま)・「管理の記録」。</p>
-    ${pend ? `<p class="warn">この端末に、未送信の記録が ${pend} 件あります(まだ受け付けへ届いていません)。次の画面で、捨てるか残すかを選べます。</p>` : ''}
+    ${pend ? `<p class="warn">この端末に、未送信の記録が ${pend} 件あります(まだサーバーへ届いていません)。次の画面で、捨てるか残すかを選べます。</p>` : ''}
     <p class="warn">元には戻せません。本番の記録が入っていないことを確かめてから進んでください。</p>
     <button type="button" id="wipe-go" class="wide danger">わかった。次へ</button><button type="button" id="wipe-cancel" class="wide">やめる</button></div></div>`);
   $('#wipe-cancel').onclick = () => closeSheet();
@@ -2511,7 +2506,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v40';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v43';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2934,7 +2929,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   try { const n = await migrateOld(); if (n) toast(`以前の版の記録${n}件を引き継ぎました`); } catch { toast('以前の記録を引き継げませんでした(元の記録は残してあります)', 6000); }
   bootStep('未送信の数', () => Promise.resolve(updateBadge()).then(() => bootMark('未送信の数を数えた')));
-  bootStep('選択肢と役割', () => { bootMark('受け付け:初めの呼び出し'); return Promise.resolve(refreshMeta()).then(() => { bootMark('受け付け:初めの返事'); if (auth && auth.group && auth.group.leader) refreshGstat(false); }); });   // リーダー: 申し込みの件数の印   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
+  bootStep('選択肢と役割', () => { bootMark('サーバー:初めの呼び出し'); return Promise.resolve(refreshMeta()).then(() => { bootMark('サーバー:初めの返事'); if (auth && auth.group && auth.group.leader) refreshGstat(false); }); });   // リーダー: 申し込みの件数の印   // 開いた時に、選択肢と役割を取り直す(次に開いた時から新しい選択肢が出る)
   bootStep('送信', syncQuiet); // 開いた時に、未送信があって電波があれば送る
   window.catBooted = true; bootMark('起動の終わり'); renderBootLog();
 });
