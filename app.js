@@ -51,8 +51,8 @@ const CHANGE_ITEMS = ['ear', 'neuter', 'hairLen', 'managed', 'feeder', 'body', '
 // 「間違いを直す」で直せる項目(位置・日時・写真は直せない)
 const EDIT_FIELD_KEYS = ['color', 'hairLen', 'ear', 'neuter', 'managed', 'feeder', 'pet', 'age', 'sex', 'body', 'tail', 'tame'];
 // 受け付けの内容に合わせる項目(取り直した時)
-const SERVER_KEYS = ['area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason', 'neuter', 'hairLen'];
-const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId', 'neuter', 'hairLen'];
+const SERVER_KEYS = ['sightCount', 'lastSeenAt', 'area', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'editedAt', 'editCount', 'changes', 'siteId', 'mesh3', 'mesh500', 'mesh250', 'deleted', 'deletedAt', 'goneAt', 'goneReason', 'neuter', 'hairLen'];
+const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color', 'ear', 'managed', 'feeder', 'age', 'sex', 'body', 'tail', 'tame', 'collar', 'feature', 'pet', 'petReasons', 'petOther', 'siteId', 'neuter', 'hairLen', 'seenAt'];   // seenAt: 見かけた時刻(いま以外を選んだ時だけ。2026-10-29 seen-time-2)
 
 const $ = s => document.querySelector(s);
 // 20261027-1050c: v26 で足した画面の部品は、古い index.html(公開直後の HTTP の控え)には無い。無い時は、画面に出ない仮の部品を返して飛ばす(起動の段の残りのボタンが止まらないように)
@@ -604,27 +604,35 @@ const blobToB64 = b => new Promise((ok, ng) => { const r = new FileReader(); r.o
 let sending = false, sendAgain = false, sendingP = null;   // sendAgain: 送っている最中に保存された物がある(終わったら続けて送る)。sendingP: 今の送りが終わるのを待つため
 // 電波・ログイン・受け付けの都合で送れなかっただけの誤り。この時は端末に貯めた直し・変化を残して、あとでもう一度送る
 const TRANSIENT = ['network', 'timeout', 'http_error', 'stalled', 'no_cors', 'busy', 'not_logged_in', 'not_configured', 'token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token', 'tokeninfo_unreachable', 'server_error', 'server_not_configured', 'bad_json', 'bad_response', 'unknown_action', 'not_registered', 'email_not_verified', 'stopped', 'pass_invalid', 'card_stopped'];
+// 受け付けが見かけた時刻で断った(8日以上前・先の時刻)。登録は時刻を外して送り直す・目撃は端末に残す(seen-time-3)
+const SEEN_ERR = ['seenAt_too_old', 'seenAt_future', 'bad_seenAt'];
 // 端末に貯めた「直し」「状態の変化」を、記録ごとに古い順に送る。送れた分は貯めた列から外す(外す前に記録を読み直す=送っている間に足された分を消さない)
 async function sendOps() {
-  let sent = 0, lastErr = null, dropped = [];
+  let sent = 0, lastErr = null, dropped = [], skipSight = false, held = 0;   // skipSight: 受け付けが「また見かけた」をまだ知らない(更新待ち)。目撃だけ残して、ほかの直し・変化は送る
+  const skip = new Set();   // held: 見かけた時刻で断られた目撃(取り下げずに端末に残す。この回は飛ばして、後ろの直し・変化は送る。seen-time-3)
   const ids = (await allRecords()).filter(r => r.status === 'sent' && opsOf(r).length).sort((a, b) => opsOf(a)[0].queuedAt.localeCompare(opsOf(b)[0].queuedAt)).map(r => r.id);
   outer: for (const id of ids) {
     for (;;) {
-      const r = await getRecord(id), op = r && opsOf(r)[0]; if (!op) break;
-      const res = op.type === 'edit' ? await api('edit', { recordId: id, fields: op.fields })
+      const r = await getRecord(id), op = r && opsOf(r).find(o => !(skipSight && SIGHT_OPS.includes(o.type)) && !skip.has(o.opId)); if (!op) break;
+      const res = op.type === 'sight' ? await api('sightAdd', { sight: { id: op.id, recordId: id, seenAt: op.seenAt, time: op.queuedAt, lat: op.lat, lng: op.lng, acc: op.acc, locSrc: op.locSrc } })
+        : op.type === 'sightDelete' ? await api('sightDelete', { sightId: op.sightId })
+        : op.type === 'edit' ? await api('edit', { recordId: id, fields: op.fields })
         : op.type === 'delete' || op.type === 'restore' ? await api(op.type, { recordId: id })
         : await api('change', { change: { id: op.id, recordId: id, time: op.time, changes: op.changes, petReasons: op.petReasons, petOther: op.petOther, goneReason: op.goneReason, goneOther: op.goneOther, goneDate: op.goneDate, lat: op.lat, lng: op.lng, acc: op.acc } });
       const f = await getRecord(id); if (!f) break;
+      if (SIGHT_OPS.includes(op.type) && !res.ok && res.error === 'unknown_action') { skipSight = true; saveCfg({ sightOld: Date.now() }); continue; }   // 古い受け付け: 目撃は端末に残す(更新待ち)
       if (!res.ok && TRANSIENT.includes(res.error)) { lastErr = res.error; break outer; }
+      if (op.type === 'sight' && !res.ok && SEEN_ERR.includes(res.error)) { skip.add(op.opId); held++; f.ops = opsOf(f).map(o => o.opId === op.opId ? { ...o, rejected: res.error } : o); await putAll([f]); continue; }   // 端末の時計が大きくずれた等: 目撃は消さずに残し「送れなかった」と出す
       f.ops = opsOf(f).filter(o => o.opId !== op.opId);
       if (!res.ok) dropped.push(res.error);   // 受け付けが断った直し(見つからない・内容がおかしい)は取り下げる。画面は次の取り直しで受け付けの内容に戻る
       else if (op.type === 'edit') { f.editCount = res.editCount; f.editedAt = res.editedAt; sent++; }
       else if (op.type === 'delete' || op.type === 'restore') sent++;
+      else if (SIGHT_OPS.includes(op.type)) { if (cfg().sightOld) saveCfg({ sightOld: 0 }); if ('sightCount' in res) { f.sightCount = res.sightCount || undefined; f.lastSeenAt = res.sightCount ? res.lastSeenAt : undefined; } sent++; }
       else { if (!res.duplicate && !res.unchanged) f.changes = [...(f.changes || []), { id: op.id, time: op.time, items: (res.items || []).map(({ label, from, to }) => ({ label, from, to })) }]; sent++; }
       await putAll([f]);
     }
   }
-  return { sent, lastErr, dropped };
+  return { sent, lastErr, dropped, held };
 }
 // えさ場: 未送信の登録 → 貯めた名前の直し・「使っていない」を、古い順に送る。記録より先に送る(記録がえさ場に結び付くため)
 async function sendSites() {
@@ -668,16 +676,20 @@ async function sendNow(quiet) {
     if (!configured()) return say(errText('not_configured'), 5000);
     if (!loggedIn()) return say(errText('not_logged_in'), 5000);
     if (!navigator.onLine) return say(WEAK_TEXT + '(記録はこの端末に残っています)', 5000);
-    let sent = 0, lastErr = null, dropped = [];
+    let sent = 0, lastErr = null, dropped = [], held = 0, seenCut = 0;
     const so = await sendSites(); sent += so.sent; lastErr = so.lastErr;
     if (!lastErr) for (const r of pend) {
       const record = {}; SEND_KEYS.forEach(k => { if (r[k] !== undefined) record[k] = r[k]; });
       const photos = []; for (const p of (r.photos || [])) { try { photos.push(await blobToB64(p)); } catch { /* 読めない写真は送らない */ } }
       say(`送っています… ${sent + 1}/${pend.length}`);
-      const res = await api('submit', { record, photos }, photos.length ? API_WAIT_PHOTO_MS : API_WAIT_MS);
+      let res = await api('submit', { record, photos }, photos.length ? API_WAIT_PHOTO_MS : API_WAIT_MS);
+      // 見かけた時刻で断られた(端末の時計が大きくずれた等): 時刻を外して(記録日時と同じ扱い)送り直す。後ろの登録を止めない(seen-time-3)
+      const cut = !res.ok && SEEN_ERR.includes(res.error) && !!record.seenAt;
+      if (cut) { delete record.seenAt; seenCut++; res = await api('submit', { record, photos }, photos.length ? API_WAIT_PHOTO_MS : API_WAIT_MS); }
       if (!res.ok) { lastErr = res.error; break; } // 1件失敗したら止める(順番を守る・同じ案内を繰り返さない)
       // 送っている間に直された・削除された物は、端末の今の形を読み直し、違う所を直し・削除として続けて送る(前は送る前の形で上書きして、直しが消えた)
       const f = (await getRecord(r.id)) || r, now = new Date().toISOString(), diff = {};
+      if (cut) delete f.seenAt;   // 外して送った時は、端末も合わせる
       if (res.siteDropped && f.siteId === record.siteId) f.siteId = '';
       // 受け付けに前の送りがもうあった(duplicate=返事が電波で切れた送りの、送り直し)時は、受け付けの中身が分からないので、直せる所を全部「直し」で送る(同じ所は受け付けが数えない。0821)
       const base = res.duplicate ? {} : record;
@@ -689,13 +701,14 @@ async function sendNow(quiet) {
       if (f.deleted) f.ops = [...opsOf(f), { type: 'delete', opId: newId('o'), queuedAt: now }];
       await putAll([f]); sent++;
     }
-    if (!lastErr) { const o = await sendOps(); sent += o.sent; lastErr = o.lastErr; dropped = o.dropped; }
+    if (!lastErr) { const o = await sendOps(); sent += o.sent; lastErr = o.lastErr; dropped = o.dropped; held = o.held; }
     await updateBadge();
     lastSendErr = lastErr;
-    if (lastErr) { say((sent ? `${sent}件を送りました。` : '') + sendErrText(lastErr), 7000); if (noAnswer(lastErr)) retryLater(); }
+    const smsg = (seenCut ? `見かけた時刻が受け付けられなかった登録${seenCut}件は、時刻を外して(記録した時刻で)送りました。` : '') + (held ? `${SIGHT_HELD_TEXT}「また見かけた」が${held}件あります(この端末に残っています。消すこともできます)。` : '');   // seen-time-3
+    if (lastErr) { say((sent ? `${sent}件を送りました。` : '') + smsg + sendErrText(lastErr), 7000); if (noAnswer(lastErr)) retryLater(); }
     else {
-      const dmsg = dropped.length ? `${sent}件を送りました。受け付けが受け付けなかった直し・変化が${dropped.length}件あります(${errText(dropped[0])})` : '';
-      say(dmsg || `${sent}件を送りました(送信済み)`, dropped.length ? 7000 : 3500);
+      const dmsg = dropped.length || smsg ? (sent ? `${sent}件を送りました。` : '') + smsg + (dropped.length ? `受け付けが受け付けなかった直し・変化が${dropped.length}件あります(${errText(dropped[0])})` : '') : '';
+      say(dmsg || `${sent}件を送りました(送信済み)`, dmsg ? 7000 : 3500);
       await refreshFromServer(true);
       if (dmsg) $('#sendmsg').textContent = dmsg;   // 取り直しの案内で上書きされないように
     }
@@ -733,6 +746,7 @@ function mergeServerRecords(list, myId) {
         if (l.recorderId !== s.recorderId) { l.recorderId = s.recorderId; dirty = true; }
         if (!opsOf(l).length) {   // 送っていない直し・変化・削除が無い記録は、受け付けの今の内容に合わせる(別の端末で直した分も入る)
           for (const k of SERVER_KEYS) if (JSON.stringify(l[k]) !== JSON.stringify(s[k])) { l[k] = s[k]; dirty = true; }
+          if (s.seenAt && l.seenAt !== s.seenAt) { l.seenAt = s.seenAt; dirty = true; }   // 見かけた時刻: 受け付けが返した時だけ合わせる(古い受け付けは返さない。端末で選んだ時刻を消さない)
         }
         if (dirty) st.put(l);
       }
@@ -994,9 +1008,10 @@ async function onPhoto(e) {
   if (photos.length + files.length > MAX_PHOTOS) toast(`写真は${MAX_PHOTOS}枚までです`);
   for (const f of files) {
     if (photos.length >= MAX_PHOTOS) break;
-    try { photos.push(await cleanImage(f)); } catch { toast('この写真は読み込めませんでした'); }
+    const at = await photoTakenAt(f);   // 撮影時刻だけ(見かけた時刻の案。ほかの付属情報は読まない)
+    try { photos.push(await cleanImage(f)); if (at && !(seenMs({ mode: 'pick', at }) || {}).error) seenSt.photoAt = at; } catch { toast('この写真は読み込めませんでした'); }
   }
-  renderThumbs();
+  renderThumbs(); renderSeen();
 }
 
 async function saveRecord() {
@@ -1009,7 +1024,8 @@ async function saveRecord() {
   saving = true; const btn = $('#btn-save'), was = btn.innerHTML; btn.disabled = true; btn.textContent = '保存しています…';
   const done = () => { saving = false; btn.disabled = false; btn.innerHTML = was; };
   try {
-    await putAll([{ id: newId(), time: new Date().toISOString(),
+    const st = seenMs(seenSt); if (st && st.error) { done(); return toast(st.error, 5000); }
+    await putAll([{ id: newId(), time: new Date().toISOString(), ...(st ? { seenAt: new Date(st).toISOString() } : {}),
       recorderId: auth && auth.recorderId || null, // 受け付けが返した入力者ID(名前は持たない)。送信時に受け付け側で確定する
       area: '', lat: loc.lat, lng: loc.lng, acc: loc.acc, locSrc: loc.src, ...(meshCodes(loc.lat, loc.lng) || {}),   // 区域は決め打ちをやめた(えさ場と地域メッシュで表す)。メッシュは端末の計算(送信後は受け付けの値になる)
       ...form, ...(form.pet === 'あり' ? { petReasons: form.petReasons || [], petOther: form.petReasons && form.petReasons.includes('その他') ? (form.petOther || '').trim().slice(0, PET_OTHER_MAX) : '' } : { petReasons: undefined, petOther: undefined }),
@@ -1019,7 +1035,7 @@ async function saveRecord() {
       feature: $('#feature').value.trim(), photos, status: 'pending' }]);
   } catch (e) { done(); return toast(dbErrText(e), 8000); }   // 入れた内容は消さない(もう一度押せる)
   Object.keys(form).forEach(k => delete form[k]); photos = [];   // 入れ物は作り直さない(項目の部品が同じ入れ物を持っている)
-  renderThumbs(); $('#feature').value = '';
+  renderThumbs(); $('#feature').value = ''; seenSt = { mode: 'now' }; renderSeen();
   if (optionsDirty) buildForm(); else { document.querySelectorAll('#fields .opts button.sel').forEach(b => b.classList.remove('sel')); form.neuter = NEUTER_UNKNOWN; form.hairLen = HAIR_UNKNOWN; [['neuter', NEUTER_UNKNOWN], ['hairLen', HAIR_UNKNOWN]].forEach(([k, v]) => { const nb = document.querySelector(`#fields .opts[data-k=${k}] button[data-v="${v}"]`); if (nb) nb.classList.add('sel'); }); formCtl.sync(); }
   hideSiteAsk(); renderSiteCands();
   $('#dup').classList.add('hidden'); done();
@@ -1400,7 +1416,7 @@ async function renderList() {
     const nPhoto = r.photos && r.photos.length ? ` 写真${r.photos.length}枚` : (r.photoCount ? ` 写真${r.photoCount}枚(受け付け側)` : '');
     const st = all || (wv && (r.mine === false || !r.status)) ? `<span class="st remote">${r.mine ? '自分の記録' : esc(whoText(r))}</span>` : `<span class="st ${r.status === 'sent' && !opsOf(r).length ? 'sent' : ''}">${r.status !== 'sent' ? '未送信' : opsOf(r).length ? `送信済み(直し・変化 ${opsOf(r).length}件が送信待ち)` : '送信済み'}</span>${r.remote ? ' <span class="st remote">(受け付けから取り直した記録)</span>' : ''}`;
     return `<div class="item${r.deleted ? ' gone' : ''}${isGone(r) ? ' away' : ''}" data-id="${esc(r.id)}" role="button" tabindex="0">${img}<div><b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''} さくら耳:${esc(r.ear)}${!hasEar(r) && effNeuter(r) === NEUTER_DONE ? ' <span class="mark neu">手術済み</span>' : ''} ${esc(r.sex)} ${esc(r.age)} ${r.deleted ? delMark(r) : ''}${isGone(r) ? `<span class="mark away">${esc(goneText(r))}</span>` : ''}${marksHtml(r)}${petText(r) ? `<br><span class="pet">${esc(petText(r))}</span>` : ''}<br>
-    <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br>
+    <span class="note">${fmt(r.time)}${r.area ? ' ' + esc(r.area) : ''}${nPhoto}</span><br><span class="note lastseen">${esc(lastSeenText(r))}</span><br>
     ${st} ${esc(r.feature || '')}${!all && !r.deleted && (!wv || (r.mine !== false && r.status)) ? `<br><button type="button" class="small chgbtn" data-change="${esc(r.id)}"><svg class="ic sm" aria-hidden="true"><use href="#i-change"/></svg>この猫の状態を変える</button>` : ''}</div></div>`; };
   if (!listOpenInit && rs.length) { listOpenInit = true; listOpen.add(rs[0].siteId || ''); }   // 初めて開いた時は、いちばん新しい猫のいるえさ場を開いておく(状態を変えるまでが2回で済む)
   const groups = new Map();   // えさ場の id → 猫(えさ場が消えた/見つからない物も、その名前の組に入れる)
@@ -1487,7 +1503,7 @@ async function renderMap() {
   const sites = await viewSites(), sm = new Map(sites.map(x => [x.id, x])), rsAll = await viewRecords(), withCat = new Set(rsAll.map(r => r.siteId).filter(Boolean));
   document.querySelectorAll('.showgone').forEach(c => { c.checked = showGone; });
   rsAll.filter(r => showGone || !isGone(r)).forEach(r => L.marker([r.lat, r.lng], { icon: catIcon(r), kind: 'cat', keyboard: false, title: `猫: ${colorText(r)}` })
-    .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${wide() && (scope === 'all' || r.mine === false || !r.status) ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
+    .bindPopup(`<b>${esc(colorText(r))}</b>${r.hairLen && r.hairLen !== HAIR_UNKNOWN ? ' ' + esc(r.hairLen) : ''}${isGone(r) ? `<br><b class="pmark">${esc(goneText(r))}</b>` : ''}<br>さくら耳: ${esc(r.ear)}<br>不妊手術: ${esc(effNeuter(r))}<br>${petText(r) ? esc(petText(r)) + '<br>' : ''}${r.siteId ? 'えさ場: ' + esc(siteNameOf(r.siteId, sm)) + '<br>' : ''}${r.area ? esc(r.area) + '<br>' : ''}${fmt(r.time)}<br>${esc(lastSeenText(r))}<br>${wide() && (scope === 'all' || r.mine === false || !r.status) ? (r.mine ? '自分の記録' : esc(whoText(r))) : r.status === 'sent' ? '送信済み' : '未送信'}${marksText(r) ? `<br><b class="pmark">${esc(marksText(r))}</b>` : ''}<br><button type="button" class="small popen" data-open="${esc(r.id)}">詳しく見る${r.mine === false ? '' : '・直す'}</button>`).addTo(layer));
   liveSites(sites).filter(x => byWho(x) || withCat.has(x.id)).forEach(x => L.marker([x.lat, x.lng], { icon: siteIcon(), kind: 'site', title: `えさ場: ${x.name}`, keyboard: false })
     .bindPopup(`<b>えさ場: ${esc(x.name)}</b>${x.memo ? '<br>' + esc(x.memo) : ''}<br>メッシュ ${esc(x.mesh500 || '')}${wide() && x.mine === false ? '<br>' + esc(whoText(x)) : ''}`).addTo(layer));
   setTimeout(() => map.invalidateSize(), 50);
@@ -1849,21 +1865,23 @@ async function openDetail(id) {
   const ops = opsOf(r), pendingChanges = ops.filter(o => o.type === 'change'), pendingEdits = ops.filter(o => o.type === 'edit').length;
   const chItems = (items, wait) => items.map(i => `<div class="chg-line">${esc(i.label)}: ${esc(i.from || '(未入力)')} → <b>${esc(i.to || '(なし)')}</b>${wait ? ' <span class="st">(送信待ち)</span>' : ''}</div>`).join('');
   const hist = [...(r.changes || []).map(e => `<div class="chg"><div class="note">${fmtShort(e.time)}</div>${chItems(e.items, false)}</div>`),
-    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'hairLen' ? '毛の長さ' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(また見かけた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
-  const own = mine(r), unsent = r.status !== 'sent', admin = !!(auth && auth.admin && !isCard());
+    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'hairLen' ? '毛の長さ' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(戻ってきた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
+  const own = mine(r), unsent = r.status !== 'sent', admin = !!(auth && auth.admin && !isCard()), si = sightInfo(r);
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>記録の詳しい内容</b></div>
   <div class="sheetbody">
   <div class="card">${img}<h3>${esc(colorText(r))}　さくら耳: ${esc(r.ear)} ${marksHtml(r)}</h3>
     ${isGone(r) ? `<p class="warn away">${esc(goneText(r))}。一覧と地図は、ふだん出しません(「いなくなった猫も見る」で出ます)。</p>` : ''}
-    ${rowLine('毛の長さ', effHair(r))}${rowLine('記録した日時', fmt(r.time))}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
+    ${rowLine('毛の長さ', effHair(r))}${rowLine('記録した日時', fmt(r.time))}${r.seenAt && r.seenAt !== r.time ? rowLine('見かけた時刻', fmt(r.seenAt)) : ''}${all && !own ? rowLine('入力した人', whoText(r)) : ''}${rowLine('えさ場', siteNameOf(r.siteId, sm))}${rowLine('地域メッシュ', meshOf(r))}${rowLine('区域', r.area)}${rowLine('世話', r.managed)}${rowLine('餌をあげる人', r.feeder)}${rowLine('年齢', r.age)}${rowLine('性別', r.sex)}${rowLine('体の様子', r.body)}${rowLine('尻尾', r.tail)}${rowLine('人への慣れ', r.tame)}${rowLine('不妊手術', neuterText(r))}${rowLine('飼い猫の可能性', petText(r).replace('飼い猫の可能性: ', ''))}${rowLine('特徴', r.feature)}
     ${rowLine('写真', r.photos && r.photos.length ? r.photos.length + '枚' : r.photoCount ? r.photoCount + '枚(受け付け側)' : '')}
     ${all && !own ? '' : `<div class="line2"><span class="lbl">送信</span><span class="st ${unsent ? '' : 'sent'}">${unsent ? '未送信' : '送信済み'}</span></div>`}</div>
+  <div class="card sightcard">${own && !r.deleted ? `<button type="button" id="s-sight" class="act big green">また見かけた<small>${sightOld() ? SIGHT_WAIT + 'です(受け付けが新しくなると使えます)' : 'この猫をまた見かけた時に。時刻と場所を記録します'}</small></button>` : ''}
+    <details id="s-sightbox"><summary>見かけた記録 ${si.n}回(最後 ${esc(mdhm(si.last))})</summary><div id="s-sightlist" class="sightlist"></div></details></div>
   <div class="card"><h3>これまでの変化(${hist.length}回)</h3>${hist.length ? hist.join('') : '<p class="note">状態の変化はまだ記録されていません。</p>'}
     ${editMarks(r) ? `<p class="note">この記録は、入力のまちがいを${editMarks(r)}回直しています${r.editedAt ? '(最後に直した日時: ' + esc(fmtShort(r.editedAt)) + ')' : ''}${pendingEdits ? `。うち${pendingEdits}回は送信待ちです` : ''}。</p>` : ''}</div>
   ${r.deleted ? `<div class="warn">この記録は削除されています(${esc(fmtShort(r.deletedAt))})。一覧・地図・集計には出ません。${canRestore(r) ? '' : '削除してから30日を過ぎたので、元に戻せません。'}</div>
   ${canRestore(r) && (own || admin) ? '<button type="button" id="s-undel" class="act">元に戻す<small>一覧・地図・集計にまた出します</small></button>' : ''}`
   : own ? `<button type="button" id="s-edit" class="act">間違いを直す<small>入力をまちがえた時。この記録をそのまま書き換えます</small></button>
-  <button type="button" id="s-change" class="act orange"${unsent ? ' disabled' : ''}>状態が変わった<small>未手術→手術済み・さくら耳が付いた・えさ場が変わった・いなくなった・また見かけた など。履歴に足していきます</small></button>
+  <button type="button" id="s-change" class="act orange"${unsent ? ' disabled' : ''}>状態が変わった<small>未手術→手術済み・さくら耳が付いた・えさ場が変わった・いなくなった・戻ってきた など。履歴に足していきます</small></button>
   ${unsent ? '<p class="note">まだ送っていない記録です。「状態が変わった」は、送ってから使えます(間違いは今すぐ直せます)。</p>' : ''}
   <button type="button" id="s-del" class="wide danger">この記録を削除する</button><p class="note">削除しても、受け付けのシートの行は残ります(「削除済み」の印が付きます)。30日の間は元に戻せます。</p>`
     : '<p class="warn">この記録は別の人の物なので、直せません。</p>'}
@@ -1873,6 +1891,11 @@ async function openDetail(id) {
   const rt = $('#sheet').querySelector('.rthumbs'); if (rt) { rt.onclick = phClick; rt.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('img[data-rph-zoom]')) { e.preventDefault(); e.target.click(); } }; phWatch(rt); }
   if (own && !r.deleted) { $('#s-edit').onclick = () => openEdit(id); $('#s-change').onclick = () => openChange(id); $('#s-del').onclick = e => busy(e.currentTarget, () => deleteRecord(id), '削除しています…'); }
   if ($('#s-undel')) $('#s-undel').onclick = e => busy(e.currentTarget, () => restoreRecord(id, own ? '' : r.recorderId), '戻しています…');
+  if ($('#s-sight')) $('#s-sight').onclick = () => openSight(id);
+  const sb = $('#s-sightbox'), sl = $('#s-sightlist');
+  sb.ontoggle = () => { if (sb.open && !sl.dataset.done) { sl.dataset.done = '1'; loadSights(r, sl); } };
+  sl.onclick = e => { const b = e.target.closest('button[data-sdel],button[data-sdel-local]'); if (!b) return; deleteSight(id, b.dataset.sdel || b.dataset.sdelLocal, !!b.dataset.sdelLocal); };
+  if (sightOpen === id) { sightOpen = null; sb.open = true; }
 }
 
 // ---- 削除・元に戻す(2026-10-25 2332)。自分の物だけ消せる。消した物は一覧・地図・集計に出さない。30日の間は本人と管理者が元に戻せる ----
@@ -1980,7 +2003,7 @@ async function openChange(id) {
   <div id="c-fields"></div>
   <div class="card"><h3>えさ場</h3><p class="now">今: ${esc(curSite ? siteNameOf(curSite, sm) : 'えさ場なし')}</p><p class="hint">えさ場が変わった時だけ選び直してください(自分のえさ場だけ。この記録の場所から近い順。100mより遠いえさ場も下の「そのほかの自分のえさ場」から選べます)</p><select id="c-site" class="sitesel" aria-label="えさ場"></select></div>
   <div class="card" id="c-gonecard"><h3>いる/いない</h3><p class="now">今: ${esc(isGone(r) ? goneText(r) : 'いる')}</p>
-    ${isGone(r) ? `<label class="line chk"><input type="checkbox" id="c-back"><span>また見かけた(「いる」に戻す)</span></label>`
+    ${isGone(r) ? `<label class="line chk"><input type="checkbox" id="c-back"><span>戻ってきた(「いる」に戻す)</span></label>`
     : `<p class="hint">見かけなくなった・保護された など、この場所にいなくなった時だけ。記録は消えません(入力の間違いは「削除」の方です)</p><label class="line chk"><input type="checkbox" id="c-gone"><span>いなくなった</span></label>
     <div id="c-gonebox" class="hidden"><p class="hint">理由(任意・1つ)</p><div class="opts" id="c-goneopts">${GONE_REASONS.map(o => `<button type="button" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>
     <input id="c-goneother" class="petother hidden" type="text" maxlength="${GONE_OTHER_MAX}" placeholder="その他の理由(短く・名前や住所は書かない)" aria-label="その他の理由">
@@ -2027,6 +2050,155 @@ async function openChange(id) {
     toast(configured() && loggedIn() && navigator.onLine ? '変化を記録しました。送っています…' : '変化を記録しました(送信待ち。電波が戻ったら送ります)');
     await openDetail(id); syncQuiet().then(async () => { await updateBadge(); if (sheetId === id && $('#s-edit')) openDetail(id); });
   }, '記録しています…');
+}
+
+// ---- 見かけた時刻・また見かけた(2026-10-29 seen-time-2)----
+// 見かけた時刻: 既定は「いま」(押さなければ今までと同じ)。30分前・1時間前・時刻を選ぶ(過去7日まで・先は選べない)。
+// 記録の time(保存を押した時刻)は今までどおり。違う時刻を選んだ時だけ seenAt を持ち、受け付けへ送る(古い受け付けは読まずに捨てる)
+const SEEN_DAYS = 7, SEEN_MODES = [['now', 'いま'], ['m30', '30分前'], ['h1', '1時間前'], ['pick', '時刻を選ぶ']];
+const localInput = ms => { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
+const hhmm = ms => { const d = new Date(ms), z = n => String(n).padStart(2, '0'); return `${d.getHours()}:${z(d.getMinutes())}`; };
+const mdhm = t => { const d = new Date(t); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${hhmm(d)}`; };
+// 選んだ形 → 時刻(ms)。いま = null。選べない時刻は { error }
+function seenMs(st, now = Date.now()) {
+  if (!st || st.mode === 'now' || !st.mode) return null;
+  if (st.mode === 'm30') return now - 30 * 60000;
+  if (st.mode === 'h1') return now - 60 * 60000;
+  const t = st.at;
+  if (!isFinite(t)) return { error: '見かけた時刻を選んでください' };
+  if (t > now + 60000) return { error: '見かけた時刻に、先の時刻は選べません' };
+  if (now - t > SEEN_DAYS * 864e5) return { error: `見かけた時刻は、${SEEN_DAYS}日前までです(それより前は選べません)` };
+  return t;
+}
+// 見かけた時刻の部品。st = { mode, at, photoAt }。onchange(st) は押した時
+function seenPicker(el, st, onchange) {
+  if (!el) return;
+  const now = Date.now(), t = seenMs(st, now);
+  el.innerHTML = `<div class="opts seenopts">${SEEN_MODES.map(([k, l]) => `<button type="button" data-seen="${k}" class="${st.mode === k ? 'sel' : ''}" aria-pressed="${st.mode === k}">${l}</button>`).join('')}</div>
+    <div class="seenpick${st.mode === 'pick' ? '' : ' hidden'}"><input type="datetime-local" class="seenat" aria-label="見かけた日時" min="${localInput(now - SEEN_DAYS * 864e5)}" max="${localInput(now)}" value="${isFinite(st.at) ? localInput(st.at) : ''}"><p class="note">${SEEN_DAYS}日前から今までの間で選べます。</p></div>
+    ${st.photoAt && !(st.mode === 'pick' && st.at === st.photoAt) ? `<button type="button" class="small seenphoto">写真の時刻 ${hhmm(st.photoAt)} にする</button>` : ''}
+    <p class="note seennow">${t === null ? 'いまの時刻で記録します。' : t && t.error ? esc(t.error) : '見かけた時刻: ' + esc(mdhm(t))}</p>`;
+  el.querySelector('.seenopts').onclick = e => { const b = e.target.closest('button[data-seen]'); if (!b) return; st.mode = b.dataset.seen; if (st.mode === 'pick' && !isFinite(st.at)) st.at = Date.now(); seenPicker(el, st, onchange); if (onchange) onchange(st); };
+  el.querySelector('.seenat').onchange = e => { const v = e.target.value; st.at = v ? new Date(v).getTime() : NaN; seenPicker(el, st, onchange); if (onchange) onchange(st); };
+  const pb = el.querySelector('.seenphoto'); if (pb) pb.onclick = () => { st.mode = 'pick'; st.at = st.photoAt; seenPicker(el, st, onchange); if (onchange) onchange(st); };
+}
+// 写真の撮影時刻(EXIF の DateTimeOriginal。無ければ DateTime)だけを読む。ほかの付属情報(撮影場所など)は読まない・送らない。読めなければ null
+async function photoTakenAt(file) {
+  try {
+    if (!file || !/jpe?g/i.test(file.type || file.name || '')) return null;
+    const dv = new DataView(await file.slice(0, 131072).arrayBuffer());
+    if (dv.getUint16(0) !== 0xFFD8) return null;
+    let p = 2;
+    while (p + 4 < dv.byteLength) {
+      const mk = dv.getUint16(p), len = dv.getUint16(p + 2);
+      if (mk === 0xFFE1 && dv.getUint32(p + 4) === 0x45786966) {   // "Exif"
+        const t0 = p + 10, le = dv.getUint16(t0) === 0x4949, u16 = o => dv.getUint16(t0 + o, le), u32 = o => dv.getUint32(t0 + o, le);
+        const tagIn = (ifd, want) => { const n = u16(ifd); for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (u16(e) === want) return e; } return -1; };
+        const str = e => { if (e < 0) return ''; const off = u32(e + 8); let s = ''; for (let i = 0; i < 19; i++) s += String.fromCharCode(dv.getUint8(t0 + off + i)); return s; };
+        const ifd0 = u32(4), ex = tagIn(ifd0, 0x8769);
+        const s = (ex >= 0 ? str(tagIn(u32(ex + 8), 0x9003)) : '') || str(tagIn(ifd0, 0x0132));
+        const m = /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)$/.exec(s); if (!m) return null;
+        const t = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();   // 端末の時刻として読む
+        return isFinite(t) ? t : null;
+      }
+      if ((mk & 0xFF00) !== 0xFF00 || mk === 0xFFDA) return null;
+      p += 2 + len;
+    }
+  } catch { /* 読めない写真は何も出さない */ }
+  return null;
+}
+// 入力の画面の見かけた時刻(保存したら「いま」に戻す)
+let seenSt = { mode: 'now' };
+const renderSeen = () => seenPicker($opt('#seenpick'), seenSt);
+// 目撃(また見かけた)。端末に貯めた物は記録の ops に type 'sight'(足す)・'sightDelete'(消す)で入る
+const SIGHT_OPS = ['sight', 'sightDelete'];
+const sightOld = () => { const t = Number(cfg().sightOld) || 0; return t && Date.now() - t < 6 * 3600e3; };   // 受け付けが「また見かけた」をまだ知らない(更新待ち)と分かった時刻(6時間で確かめ直す)
+const SIGHT_WAIT = '受け付けの更新待ち', SIGHT_HELD_TEXT = '見かけた時刻が受け付けられず、送れなかった';   // SIGHT_HELD_TEXT: 端末の時計が大きくずれていた等(seen-time-3)
+const sightPending = r => opsOf(r).filter(o => o.type === 'sight');
+// 見かけた回数(登録の1回 + 目撃)と最後に見かけた時刻。受け付けの数 + 送信待ちの目撃 - 送信待ちの「消す」
+function sightInfo(r) {
+  const pend = sightPending(r), dels = opsOf(r).filter(o => o.type === 'sightDelete').length;
+  const n = 1 + Math.max(0, (Number(r.sightCount) || 0) - dels) + pend.length;
+  let last = r.seenAt || r.time; const lt = ms => new Date(ms).getTime() || 0;
+  [r.lastSeenAt, ...pend.map(o => o.seenAt)].forEach(t => { if (t && lt(t) > lt(last)) last = t; });
+  return { n, last };
+}
+const lastSeenText = r => { const s = sightInfo(r); return s.last ? `最後に見かけた日 ${mdhm(s.last).split(' ')[0]}` : ''; };
+const LOC_SRC_TEXT = { gps: 'いまの場所', same: '前と同じ場所', map: '地図で選んだ場所' };
+// また見かけた(詳しい画面の大きいボタンから)。keep = 地図で選んで戻ってきた時の、選びかけの形
+async function openSight(id, keep) {
+  const r = await getRecord(id); if (!r || r.deleted) return;
+  if (sightOld()) return toast(`「また見かけた」は、${SIGHT_WAIT}です。受け付けが新しくなると使えます(管理者に知らせてください)。`, 6000);
+  const s = keep || { seen: { mode: 'now' }, loc: '', locSet: false, map: null, id: newId('s') };
+  const prev = (() => { const p = sightPending(r).filter(o => isFinite(o.lat)).slice(-1)[0]; return p ? { lat: p.lat, lng: p.lng } : { lat: r.lat, lng: r.lng }; })();
+  const autoLoc = () => { if (!s.locSet) s.loc = s.seen.mode === 'now' ? 'gps' : 'same'; };
+  autoLoc();
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>また見かけた</b></div>
+  <div class="sheetbody"><div class="card"><h3>${esc(colorText(r))}　さくら耳: ${esc(r.ear)}</h3>
+    ${isGone(r) ? `<p class="warn">この猫は「いなくなった」になっています。</p><label class="line chk"><input type="checkbox" id="w-back"${s.back === false ? '' : ' checked'}><span>「いなくなった」を外す(戻ってきた)</span></label><p class="note">外すと、見かけた記録と一緒に、「状態が変わった」の「いる(戻ってきた)」も送ります。チェックを外せば、見かけた記録だけです。</p>` : ''}
+    <h3>見かけた時刻</h3><div id="w-seen"></div></div>
+  <div class="card"><h3>見かけた場所</h3><div class="opts" id="w-loc">${Object.entries({ ...LOC_SRC_TEXT, map: '地図で選ぶ' }).map(([k, l]) => `<button type="button" data-loc="${k}" class="${s.loc === k ? 'sel' : ''}">${l}</button>`).join('')}</div>
+    <p class="note" id="w-locnote"></p><div id="w-mini" class="locmini hidden"></div></div>
+  <button type="button" id="w-save" class="primary">見かけたことを記録する</button>
+  <button type="button" id="w-cancel" class="wide">やめる</button>
+  <p class="note">電波がなくても、この端末に貯めて、つながったら送ります。</p></div>`);
+  const locNote = () => { $('#w-locnote').textContent = s.loc === 'gps' ? '保存する時に、いまの場所を取ります。' : s.loc === 'same' ? '前に見かけた場所(または記録した場所)にします。' : s.map ? '地図で選んだ場所(下の地図のピンの所)' : '地図で場所を選んでください。';
+    const mm = $('#w-mini'); mm.classList.toggle('hidden', !(s.loc === 'map' && s.map)); if (s.loc === 'map' && s.map) miniMap(mm, s.map.lat, s.map.lng);
+    $('#w-loc').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.loc === s.loc)); };
+  seenPicker($('#w-seen'), s.seen, () => { autoLoc(); locNote(); });
+  if ($('#w-back')) $('#w-back').onchange = () => { s.back = $('#w-back').checked; };   // 地図で選んで戻った時も、チェックの形を残す
+  locNote();
+  const back = () => openDetail(id);
+  $('#s-back').onclick = $('#w-cancel').onclick = back;
+  $('#w-loc').onclick = e => { const b = e.target.closest('button[data-loc]'); if (!b) return; s.loc = b.dataset.loc; s.locSet = true; locNote();
+    if (s.loc === 'map') { closeSheet(); startPick('cat', { from: s.map || prev, ok: (lat, lng) => { s.map = { lat, lng }; openSight(id, s); }, cancel: () => openSight(id, s) }); } };
+  $('#w-save').onclick = e => busy(e.currentTarget, async () => {
+    if (sheetBusy) return;
+    const t = seenMs(s.seen); if (t && t.error) return toast(t.error, 5000);
+    let pos = null;
+    if (s.loc === 'gps') { toast('いまの場所を取っています…'); const g = await getPos(); if (g) pos = { ...g, locSrc: 'gps' }; else { toast('いまの場所が取れませんでした。「前と同じ場所」か「地図で選ぶ」を選んでください', 6000); return; } }
+    else if (s.loc === 'same') pos = { lat: prev.lat, lng: prev.lng, locSrc: 'same' };
+    else if (s.map) pos = { lat: s.map.lat, lng: s.map.lng, locSrc: 'map' };
+    else return toast('地図で場所を選んでください');
+    sheetBusy = true;
+    const now = new Date().toISOString(), op = { type: 'sight', opId: newId('o'), id: s.id, queuedAt: now, seenAt: new Date(t === null ? Date.now() : t).toISOString(), lat: pos.lat, lng: pos.lng, ...(pos.acc != null ? { acc: pos.acc } : {}), locSrc: pos.locSrc };
+    // ★2b: いなくなった猫で「いなくなった」を外す(チェックのまま)なら、「状態が変わった → いる」と同じ変化を目撃の後ろに貯める
+    const backOp = $('#w-back') && $('#w-back').checked ? { type: 'change', opId: newId('o'), id: s.backId || (s.backId = newId('c')), queuedAt: now, time: now, changes: { gone: 'いる' } } : null;
+    try { const f = await getRecord(id); if (!f) throw new Error('gone'); if (opsOf(f).some(o => o.id === s.id)) { sheetBusy = false; return back(); } f.ops = [...opsOf(f), op, ...(backOp ? [backOp] : [])]; if (backOp) { f.goneAt = ''; f.goneReason = ''; } await putAll([f]); }
+    catch (err) { sheetBusy = false; return toast(dbErrText(err), 8000); }
+    sheetBusy = false; await updateBadge();
+    toast(configured() && loggedIn() && navigator.onLine ? '見かけたことを記録しました。送っています…' : '見かけたことを記録しました(送信待ち。電波が戻ったら送ります)', 4000);
+    await openDetail(id); syncQuiet().then(async () => { await updateBadge(); if (sheetId === id && $('#s-sightbox')) openDetail(id); });
+  }, '記録しています…');
+}
+// 詳しい画面の「見かけた記録」の一覧。送った物は受け付けから取る(sightList)。送信待ちの物は端末から。
+// 消せるのは自分が入れた物だけ(送る前なら端末で消す・送った物は「消す」を貯めて送る)
+async function loadSights(r, box) {
+  const pend = sightPending(r), dels = new Set(opsOf(r).filter(o => o.type === 'sightDelete').map(o => o.sightId)), own = mine(r);
+  const line = (t, place, who, extra = '') => `<div class="sightline"><b>${esc(mdhm(t))}</b> ${esc(place)}${who ? ' <span class="note">' + esc(who) + '</span>' : ''}${extra}</div>`;
+  const whoOf = () => own ? '自分' : whoText(r);
+  const head = line(r.seenAt || r.time, '記録した場所', whoOf(), ' <span class="st">登録の時</span>');
+  const pendHtml = pend.map(o => line(o.seenAt, LOC_SRC_TEXT[o.locSrc] || '', whoOf(), ` <span class="st${o.rejected ? ' bad' : ''}">(${o.rejected ? '送れなかった・見かけた時刻が受け付けられません。消して入れ直してください' : '送信待ち' + (sightOld() ? '・' + SIGHT_WAIT : '')})</span>${own ? ` <button type="button" class="small danger" data-sdel-local="${esc(o.id)}">消す</button>` : ''}`)).join('');
+  const show = (srvHtml, note = '') => { box.innerHTML = pendHtml + srvHtml + head + (note ? `<p class="note">${esc(note)}</p>` : ''); };
+  show('', r.status === 'sent' && Number(r.sightCount) ? '受け付けから読み込んでいます…' : '');
+  if (r.status !== 'sent' || !Number(r.sightCount)) return;
+  if (!configured() || !loggedIn() || !navigator.onLine) return show('', `ほかに受け付けに${r.sightCount}回あります(電波がつながると一覧が出ます)。`);
+  const res = await api('sightList', { recordId: r.id, ...(own ? {} : { ownerId: r.recorderId }) });
+  if (sheetId !== r.id) return;
+  if (!res.ok) { if (res.error === 'unknown_action') saveCfg({ sightOld: Date.now() }); return show('', `ほかに受け付けに${r.sightCount}回あります(${res.error === 'unknown_action' ? SIGHT_WAIT : '一覧を読み込めませんでした'})。`); }
+  show((res.sights || []).filter(x => !dels.has(x.id)).map(x => line(x.seenAt, LOC_SRC_TEXT[x.locSrc] || (isFinite(x.lat) && x.lat !== null ? '場所あり' : '場所なし'), whoOf(), x.mine && own ? ` <button type="button" class="small danger" data-sdel="${esc(x.id)}">消す</button>` : '')).join(''));
+}
+let sightOpen = null;   // 詳しい画面を開き直した時、見かけた記録の一覧を開いたままにする
+async function deleteSight(id, sightId, local) {
+  if (!confirm('この「見かけた」記録を消しますか?(入れ間違えた時に使います)')) return;
+  try {
+    const f = await getRecord(id); if (!f) return;
+    if (local) f.ops = opsOf(f).filter(o => !(o.type === 'sight' && o.id === sightId));   // 送る前: 端末から消すだけ
+    else if (!opsOf(f).some(o => o.type === 'sightDelete' && o.sightId === sightId)) f.ops = [...opsOf(f), { type: 'sightDelete', opId: newId('o'), sightId, queuedAt: new Date().toISOString() }];
+    await putAll([f]);
+  } catch (err) { return toast(dbErrText(err), 8000); }
+  await updateBadge(); toast('消しました'); sightOpen = id; await openDetail(id);
+  if (!local) syncQuiet().then(async () => { await updateBadge(); if (sheetId === id && $('#s-sightbox')) openDetail(id); });
 }
 
 // ---- 管理の画面(役割「管理者」の Google の人だけ。受け付けも毎回「管理者か」で照らす)----
@@ -2331,7 +2503,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v38';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v39';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2716,7 +2888,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     else if (a === 'map') viewSites().then(ss => { const x = ss.find(y => y.id === id); if (x) { mapFocus = { lat: x.lat, lng: x.lng }; showTab('map'); } });
   };
   $('#photo-cam').onchange = $('#photo-pick').onchange = onPhoto;
-  $('#thumbs').onclick = e => { const im = e.target.closest('img[data-zoom]'); if (im) return openViewer(photos, +im.dataset.zoom); const b = e.target.closest('button'); if (!b) return; photos.splice(+b.dataset.i, 1); renderThumbs(); };
+  $('#thumbs').onclick = e => { const im = e.target.closest('img[data-zoom]'); if (im) return openViewer(photos, +im.dataset.zoom); const b = e.target.closest('button'); if (!b) return; photos.splice(+b.dataset.i, 1); renderThumbs(); if (!photos.length && seenSt.photoAt) { delete seenSt.photoAt; renderSeen(); } };
+  renderSeen();   // 見かけた時刻(既定は「いま」)
   $('#btn-save').onclick = saveRecord;
   $opt('#lchips').onclick = e => { const b = e.target.closest('button[data-chip]'); if (b) { listChip = b.dataset.chip; renderList(); } };
   $('#list').addEventListener('toggle', e => { const d = e.target; if (d.classList && d.classList.contains('sgroup')) { if (d.open) listOpen.add(d.dataset.gk); else listOpen.delete(d.dataset.gk); } }, true);

@@ -267,3 +267,8 @@ main,.card,.note,.relogin,#sendmsg,.toast{overflow-wrap:break-word}
 .agms{margin:8px 0}.agm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;padding:6px 0;border-top:1px solid #e5e5e5}.agmn{font-weight:bold;overflow-wrap:anywhere}.agmn .mark{margin-left:6px}.agroup .gconfirm{margin:8px 0}
 /* 20261029 group-relogin: グループの画面で Google のボタンの箱を出した時の下の余白(箱を上の帯のすぐ下まで動かせるように) */
 .gneed-pad{height:40vh}
+/* 見かけた時刻・また見かけた(2026-10-29 seen-time-2) */
+.seenopts button{min-width:22%}.seenpick input{font-size:18px;padding:6px;margin:6px 0;max-width:100%}.seenphoto{margin:4px 0}
+.act.big{min-height:80px;font-size:22px}.act.green{background:#2f6f4f;border-color:#2f6f4f;color:#fff}.act.green small{color:#fff}
+.sightcard details summary{cursor:pointer;font-weight:bold;padding:6px 0}.sightline{padding:6px 0;border-bottom:1px solid #eee}.sightline .small{margin-left:6px;padding:2px 10px;min-height:0}
+.lastseen{color:#2f6f4f}
