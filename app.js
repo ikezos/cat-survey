@@ -1363,6 +1363,7 @@ async function renderJoin() {
   const r = await api('groupPeek', { code: joinCode });
   if (r.ok) {
     el.innerHTML = `<div class="card ask">${gIcon('xl')}<p>グループから、お誘いのリンクが届いています。</p><div class="gname">${esc(r.groupName)}</div><p>に参加を申し込みますか？</p>
+<p class="warn join-warn"><b>入ると、今までの記録もグループの人に見えるようになります。</b></p>
 <button type="button" class="primary" data-j="apply" style="margin-top:16px">申し込む</button><button type="button" class="wide" data-j="stop">やめる</button></div>
 <p class="note center">リーダーがアプリを開くと、申し込みが表示されます。</p>`;
     return;
@@ -2245,7 +2246,7 @@ async function renderAdmin() {
       <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
     <div id="ad-groups"></div>
-    <div class="card"><p class="note">カードの人は、入力と自分の記録の直しができます。グループに入っていれば、グループの記録も見られます(役割は付けられません。グループを作る・リーダーにはなれません)。「止める」は記録を消しません。カードを止めると、その人の端末のログインも使えなくなります。なくした時は「カードを作り直す」(前のカードは使えなくなり、記録はつながります)。番号を忘れた時・5回まちがえて止まった時は「番号を戻す」。管理の操作はシートの「管理の記録」に残ります。</p></div>
+    <div class="card ad-notes"><p class="note">カードの人は、入力と自分の記録の直しができます。</p><p class="note">グループに入っていれば、グループの記録も見られます。</p><p class="note">カードの人に役割は付けられません。グループを作る・リーダーにはなれません。</p><p class="note">「止める」は記録を消しません。止めると、その人の端末のログインも使えなくなります。</p><p class="note">なくした時は「カードを作り直す」。前のカードは使えなくなり、記録はつながります。</p><p class="note">番号を忘れた・5回まちがえて止まった時は「番号を戻す」。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
@@ -2256,8 +2257,9 @@ async function renderAdmin() {
   agConfirm = null; await loadAdminGroups();
 }
 // ---- 管理の画面の「グループ」(2026-10-28 その3。管理者だけ。受け付けも毎回「管理者か」で照らす)----
-// 一覧(名前・リーダー・人数・記録数)・リーダーを替える(メンバーの Google の人から)・外す・グループを消す・今までの記録をまとめて移す。
-// 消す・移す・替える・外すは、画面の中に「本当に〜しますか？」を出し、「はい、〜」を押した時だけ行う(移すは件数を数えてから)。一覧はプルダウン+検索(人の一覧と同じ形)
+// 一覧(名前・リーダー・人数・記録数)・リーダーを替える(メンバーの Google の人から)・外す・グループを消す。
+// 消す・替える・外すは、画面の中に「本当に〜しますか？」を出し、「はい、〜」を押した時だけ行う。
+// ★v45(past-records): 「今までの記録をまとめて移す」は無くした。グループに入った時(参加を認めた時・作った時)に、受け付けがその人のグループに入っていない記録を自動で入れる一覧はプルダウン+検索(人の一覧と同じ形)
 let agData = null, agFind = { q: '', pick: '' }, agConfirm = null;
 async function loadAdminGroups() {
   const box = document.querySelector('#ad-groups'); if (!box) return;
@@ -2267,11 +2269,9 @@ async function loadAdminGroups() {
 }
 function agConfirmHtml(g) {
   const c = agConfirm; if (!c || c.gid !== g.id) return '';
-  const n = c.n || { records: 0, sites: 0 };   // 件数は「移す」の時だけある(ほかの確かめの時も、文の表を作るので読めるようにする)
   const T = { leader: [`本当に ${c.name} さんをリーダーにしますか？`, `いまのリーダー(${g.leaderName} さん)は、メンバーのまま残ります。`, 'リーダーにする'],
     remove: [`本当に ${c.name} さんを外しますか？`, 'これまでの記録はグループに残ります。外れた人には、自分の記録だけが見えます。', '外す'],
-    del: [`本当に「${g.name}」を消しますか？(記録 ${g.recordCount}件)`, `記録とえさ場は消えず、「グループなし」に戻ります。メンバー ${g.memberCount}人も、グループなしになります。グループは元には戻せません。`, '消す'],
-    move: [`本当に ${c.name} さんの今までの記録を「${g.name}」に移しますか？(記録 ${n.records}件・えさ場 ${n.sites}件)`, 'どのグループにも入っていない記録とえさ場だけを移します。ほかのグループの記録と、削除した記録は移しません。移すと、グループの人に見えるようになります。', '移す'] }[c.act];
+    del: [`本当に「${g.name}」を消しますか？(記録 ${g.recordCount}件)`, `記録とえさ場は消えず、「グループなし」に戻ります。メンバー ${g.memberCount}人も、グループなしになります。グループは元には戻せません。`, '消す'] }[c.act];
   return `<div class="gconfirm" role="alertdialog" aria-label="${esc(T[0])}"><p><b>${esc(T[0])}</b></p><p class="note">${esc(T[1])}</p><div class="row2"><button type="button" class="danger" data-ag="yes">はい、${esc(T[2])}</button><button type="button" data-ag="no">やめる</button></div></div>`;
 }
 function renderAdminGroups() {
@@ -2280,7 +2280,7 @@ function renderAdminGroups() {
   const one = g => {
     const cands = g.members.filter(m => !m.leader && !m.card);
     const mem = g.members.slice().sort((a, b) => b.leader - a.leader || a.name.localeCompare(b.name, 'ja')).map(m => `<div class="agm"><span class="agmn">${esc(m.name)}${m.leader ? '<span class="mark edit">リーダー</span>' : ''}${m.card ? '<span class="mark chg">カード</span>' : ''}</span>
-      <span class="row">${m.leader ? '' : `<button type="button" class="small" data-ag="remove" data-mid="${esc(m.id)}">外す</button>`}<button type="button" class="small" data-ag="move" data-mid="${esc(m.id)}">今までの記録を移す</button></span></div>`).join('');
+      <span class="row">${m.leader ? '' : `<button type="button" class="small" data-ag="remove" data-mid="${esc(m.id)}">外す</button>`}</span></div>`).join('');   // ★v45: 「今までの記録を移す」は無くした(グループに入った時に受け付けが自動で入れる)
     return `<div class="card person agroup" data-gid="${esc(g.id)}"><div class="ptop"><b class="pname">${esc(g.name)}</b>${g.state ? `<span class="mark del">${esc(g.state)}</span>` : ''}</div>
       <div class="note">リーダー: <b>${esc(g.leaderName)}</b>・人数: ${g.memberCount}人・記録: ${g.recordCount}件・えさ場: ${g.siteCount}か所</div>
       ${cands.length ? `<label class="fl">リーダーを替える<select class="wide" data-ag="leader-sel" aria-label="新しいリーダー"><option value="">(メンバーから選ぶ)</option>${cands.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></label><button type="button" class="small" data-ag="leader">この人をリーダーにする</button>` : '<p class="note">リーダーを替えるには、Google のメンバーがもう1人要ります(カードの人はリーダーになれません)。</p>'}
@@ -2291,7 +2291,7 @@ function renderAdminGroups() {
     ${gs.length ? `<div class="card pfind"><label class="fl">グループの名前で探す<input id="ag-q" type="search" autocomplete="off" placeholder="名前の一部" value="${esc(agFind.q)}"></label>
       <label class="fl">グループを選ぶ<select id="ag-pick" class="wide" aria-label="グループを選ぶ"></select></label><p id="ag-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ag-list">${gs.map(one).join('') || '<div class="card"><p class="note">まだグループはありません(グループは、Google の人がアプリのグループの画面で作ります)。</p></div>'}</div>
-    <div class="card"><p class="note">どのグループにも入っていない記録: ${agData.noGroupRecords}件。グループを消しても、記録とえさ場は消えません。リーダーは外せないので、先にリーダーを替えます。グループの管理の操作は、シートの「管理の記録」に残ります。</p></div>`;
+    <div class="card ag-notes"><p class="note">どのグループにも入っていない記録: ${agData.noGroupRecords}件。</p><p class="note">グループに入ると、その人の今までの記録もグループに入ります。</p><p class="note">グループを消しても、記録とえさ場は消えません。</p><p class="note">リーダーを外す時は、先にリーダーを替えます。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p></div>`;
   if (document.querySelector('#ag-q')) { $('#ag-q').oninput = () => { agFind.q = $('#ag-q').value; agFilter(); }; $('#ag-pick').onchange = () => { agFind.pick = $('#ag-pick').value; agFilter(); }; agFilter(); }
   const cb = document.querySelector('#ad-groups .gconfirm'); if (cb) cb.scrollIntoView({ block: 'nearest' });
 }
@@ -2313,17 +2313,12 @@ async function agClick(b) {
   if (a === 'leader') { const id = card.querySelector('[data-ag=leader-sel]').value; if (!id) return toast('新しいリーダーをメンバーから選んでください', 4000); agConfirm = { act: 'leader', gid: g.id, mid: id, name: mem(id).name }; return renderAdminGroups(); }
   if (a === 'remove') { agConfirm = { act: 'remove', gid: g.id, mid: b.dataset.mid, name: mem(b.dataset.mid).name }; return renderAdminGroups(); }
   if (a === 'del') { agConfirm = { act: 'del', gid: g.id }; return renderAdminGroups(); }
-  if (a === 'move') {   // 先に数える(移さない)。0件なら確かめを出さない
-    const r = await api('adminGroupMove', { groupId: g.id, memberId: b.dataset.mid }); if (!r.ok) return agFail(r);
-    if (!r.records && !r.sites) { agConfirm = null; renderAdminGroups(); return toast(`${r.name} さんには、移す記録がありません(どのグループにも入っていない記録だけを移します)`, 6000); }
-    agConfirm = { act: 'move', gid: g.id, mid: b.dataset.mid, name: r.name, n: { records: r.records, sites: r.sites } }; return renderAdminGroups();
-  }
   if (a === 'yes' && agConfirm && agConfirm.gid === g.id) {
-    const c = agConfirm, act = { leader: ['adminGroupLeader', { memberId: c.mid }], remove: ['adminGroupRemove', { memberId: c.mid }], del: ['adminGroupDelete', {}], move: ['adminGroupMove', { memberId: c.mid, expect: c.n }] }[c.act];
+    const c = agConfirm, act = { leader: ['adminGroupLeader', { memberId: c.mid }], remove: ['adminGroupRemove', { memberId: c.mid }], del: ['adminGroupDelete', {}] }[c.act];
     const r = await adminApi(act[0], { groupId: g.id, ...act[1] });
-    if (!r.ok) { if (r.error === 'count_changed') { agConfirm = { ...c, n: { records: r.records, sites: r.sites } }; renderAdminGroups(); return toast(`件数が変わりました(記録 ${r.records}件・えさ場 ${r.sites}件)。確かめてから、もう一度押してください`, 7000); } return agFail(r); }
+    if (!r.ok) return agFail(r);
     agConfirm = null;
-    toast(c.act === 'leader' ? `${c.name} さんをリーダーにしました` : c.act === 'remove' ? `${c.name} さんを外しました` : c.act === 'del' ? `「${g.name}」を消しました。記録 ${r.records}件・えさ場 ${r.sites}件はグループなしに戻りました` : `記録 ${r.records}件・えさ場 ${r.sites}件を「${g.name}」に移しました`, 6000);
+    toast(c.act === 'leader' ? `${c.name} さんをリーダーにしました` : c.act === 'remove' ? `${c.name} さんを外しました` : `「${g.name}」を消しました。記録 ${r.records}件・えさ場 ${r.sites}件はグループなしに戻りました`, 6000);
     if (scope === 'all') { scope = 'mine'; allView = null; }   // 全員の記録の写しは古いので、次に開いた時に取り直す
     return loadAdminGroups();
   }
@@ -2505,7 +2500,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v44';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v46';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;

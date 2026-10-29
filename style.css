@@ -274,3 +274,7 @@ main,.card,.note,.relogin,#sendmsg,.toast{overflow-wrap:break-word}
 .lastseen{color:#2f6f4f}
 
 table.stat{width:100%;border-collapse:collapse;table-layout:fixed}table.stat th,table.stat td{font-size:13px;padding:6px 3px;line-height:1.3;border-bottom:1px solid #e3ded3;text-align:right}table.stat th.nm{text-align:left;width:31%;overflow-wrap:anywhere;font-weight:600}table.stat thead th{font-weight:600;color:#555;font-size:12px;padding-left:1px;padding-right:1px}
+/* v45 past-records: 管理の画面の下の説明は1行ずつの短い文(行の間を詰める) */
+.ag-notes .note,.ad-notes .note{margin:2px 0}
+/* v46 past-records-2: 参加の画面の「今までの記録も見える」は目立つ注意の札(太字) */
+.ask .join-warn{margin:14px 0 4px;font-size:18px}
