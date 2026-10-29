@@ -16,7 +16,7 @@
 // 20261029 seen-time-2(v39): 見かけた時刻(登録)・また見かけた(目撃の記録・消す)・見かけた記録の一覧・最後に見かけた日。
 // 20261029 lastseen-time(v40): 一覧・地図の「最後に見かけた」に時刻も出す(月/日 時:分・今年でない時は年も)。
 // 20261027-1640: 中身が変わる物(説明書の PDF・使い方の画像・毛色の写真)も「?v=版」付きで読む。同じ名前のまま中身が変わると、古い控えが出続けたため(版が上がれば名前が変わり、必ずネットから取る)。
-const VER = 40, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+const VER = 41, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);

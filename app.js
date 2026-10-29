@@ -1449,12 +1449,15 @@ function placePin(ll) {
   else pickPin = L.marker(ll, { icon: pinIcon(), draggable: true, autoPan: true, keyboard: false, zIndexOffset: 10000, title: '選んだ場所(指で動かせます)' }).addTo(map);
   $('#btn-pickok').disabled = false; $('#pickstate').textContent = 'ピンの場所でよければ「ここで確定」を押してください';
 }
+// 地図の下絵は OpenStreetMap(サブドメインなしの推奨の住所)。出典「© OpenStreetMap」は著作権の頁へのリンクで、全部の地図に出す
+const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', OSM_CREDIT = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
 // 選んだ場所を小さな地図にピンで出す(入力の画面・えさ場の登録の画面)。動かせない地図
 function miniMap(el, lat, lng) {
   if (!el || typeof L === 'undefined') return;
   if (el._mm) { el._mm.remove(); el._mm = null; }
   const m = el._mm = L.map(el, { zoomControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false, attributionControl: false }).setView([lat, lng], 17);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+  L.control.attribution({ prefix: false, position: 'bottomright' }).addAttribution(OSM_CREDIT).addTo(m);   // 出典(OSM の決まり): 小さく右下に
+  L.tileLayer(OSM_TILES, { maxZoom: 19, attribution: OSM_CREDIT }).addTo(m);
   L.marker([lat, lng], { icon: pinIcon(), interactive: false, keyboard: false }).addTo(m);
   setTimeout(() => { m.invalidateSize(); m.setView([lat, lng], 17, { animate: false }); }, 60);
 }
@@ -1471,7 +1474,7 @@ function clusterIcon(c) {
 function initMap() {
   if (map || typeof L === 'undefined') return;
   map = L.map('map', { maxZoom: 19 }).setView([35.155, 136.93], 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+  L.tileLayer(OSM_TILES, { maxZoom: 19, attribution: OSM_CREDIT }).addTo(map);
   // 同じ場所(いちばん拡大しても分かれない)の物は、丸を押すと周りに広がる(spiderfy)
   layer = (L.markerClusterGroup ? L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false, spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true, spiderfyDistanceMultiplier: 1.6, iconCreateFunction: clusterIcon }) : L.layerGroup()).addTo(map);
   meLayer = L.layerGroup().addTo(map);
