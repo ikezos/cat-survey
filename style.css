@@ -278,3 +278,4 @@ table.stat{width:100%;border-collapse:collapse;table-layout:fixed}table.stat th,
 .ag-notes .note,.ad-notes .note{margin:2px 0}
 /* v46 past-records-2: 参加の画面の「今までの記録も見える」は目立つ注意の札(太字) */
 .ask .join-warn{margin:14px 0 4px;font-size:18px}
+.termsmsg{background:#fff3c4;color:#222;border-bottom:2px solid #e0b000;padding:10px 14px;font-size:18px;line-height:1.5}.termsmsg p{margin:0 0 6px}.termsmsg .row2{display:flex;gap:10px}.termsmsg .row2>*{flex:1;margin:0}

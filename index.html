@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v46">
+<meta name="app-ver" content="cat-survey-v47">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=46">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=46">
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="lib/leaflet.css?v=47">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=47">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -53,6 +53,7 @@ setTimeout(function () {
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="updmsg" class="updmsg hidden" role="status"><p>新しい版があります。</p><button type="button" id="btn-update" class="small">更新</button></div>
+  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>(集めた記録の使い道を書き足しました)</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -95,6 +96,8 @@ setTimeout(function () {
     <p id="loginmsg" class="note"></p>
     <p id="joinnote" class="warn joinnote hidden" role="status">グループの参加用リンクを開きました。ログインすると、参加の申し込みに進みます。</p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
+    <p id="terms-login" class="note">集めた記録は、個人や細かい場所が分からない形にまとめたうえで、行政への提言や研究に使うことがあります。まとめる単位は、区や、約500m四方の区画ごとの頭数などです。</p>
+    <a class="linkbtn" id="privacy-login" href="privacy.html">利用のきまりを見る</a>
     <div id="cardlogin" class="cardlogin">
       <h3>ログインカードでログイン</h3>
       <div id="scanbox-btn" class="scanbtnbox"><button type="button" id="btn-scan" class="primary bigbtn">📷 カードの QR を読む</button></div>
@@ -221,12 +224,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=46"></script>
-<script src="lib/leaflet.markercluster.js?v=46"></script>
-<script src="lib/qr.js?v=46"></script>
-<script src="lib/jsQR.js?v=46"></script>
-<script src="scan.js?v=46"></script>
-<script src="config.js?v=46"></script>
-<script src="app.js?v=46"></script>
+<script src="lib/leaflet.js?v=47"></script>
+<script src="lib/leaflet.markercluster.js?v=47"></script>
+<script src="lib/qr.js?v=47"></script>
+<script src="lib/jsQR.js?v=47"></script>
+<script src="scan.js?v=47"></script>
+<script src="config.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>

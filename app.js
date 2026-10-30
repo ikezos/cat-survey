@@ -249,6 +249,7 @@ async function migrateOld() {
 //            カード: 通行証(受け付けが返す長い乱数・90日・使うたびに延びる)・期限・呼び名・入力者ID。合言葉と番号は持たない。
 let auth = null; try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { auth = null; }
 const saveAuth = () => auth ? localStorage.setItem(AUTH_KEY, JSON.stringify(auth)) : localStorage.removeItem(AUTH_KEY);
+let termsWait = false;   // 利用のきまりの更新の知らせを、この端末でまだ出していない今までの人(v47)
 const isCard = () => !!(auth && auth.type === 'card');
 // Google の人も、確かめが通った時に受け付けから通行証(30日・使うたびに延びる)をもらう(2026-10-26)。ID トークン(約1時間)が切れても、通行証が期限内なら入力・送信できる
 const idValid = () => !!(auth && !isCard() && auth.idToken && auth.exp * 1000 > Date.now() + 30000);
@@ -352,6 +353,18 @@ function denyAccess(err) {
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   renderAuth(); toast(errText(err), 7000);
 }
+// 利用のきまりの更新の知らせ(v47): 今までの人にだけ、ログインしている時に出し、「わかった」で端末に覚える。新しい人はログインの画面で文を読むので出さない(初めて開いた時に「出した」扱いにする)
+const TERMS_KEY = 'catSurvey.termsNotice';   // wait=これから出す / seen=もう出さない
+function termsInit() {
+  try {
+    const v = localStorage.getItem(TERMS_KEY); if (v === 'seen') return; if (v === 'wait') { termsWait = true; return; }
+    let log = []; try { log = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); } catch { log = []; }
+    termsWait = !!(localStorage.getItem(AUTH_KEY) || localStorage.getItem(OPT_KEY) || (Array.isArray(log) && log.some(x => x && x.ver && x.ver !== APP_VER)));
+    localStorage.setItem(TERMS_KEY, termsWait ? 'wait' : 'seen');
+  } catch { termsWait = false; }   // 覚えられない端末には出さない(開くたびに出さないように)
+}
+function renderTerms() { const m = document.getElementById('termsmsg'); if (m) m.classList.toggle('hidden', !(termsWait && loggedIn())); }
+function termsOk() { termsWait = false; try { localStorage.setItem(TERMS_KEY, 'seen'); } catch { /* 覚えられない端末 */ } renderTerms(); }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
   auth = null; homeSrv = null; gReset(); saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
@@ -467,7 +480,7 @@ function renderAuth() {
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。全員の記録は、Google でログインした人だけが見られます。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
-  renderScopeBar(); renderJoinNote(); renderHomeGroup();
+  renderScopeBar(); renderJoinNote(); renderHomeGroup(); renderTerms();
   $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
   if (on && !wasLoggedIn) { wasLoggedIn = true; showTab(joinCode ? 'join' : 'home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
@@ -2500,7 +2513,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v46';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v47';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2844,6 +2857,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(() => checkUpdate(false), UPD_EVERY_MS);   // 開いたままでも30分ごとに確かめる
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastUpdCheck > 60000) checkUpdate(false); });   // 前に出した時
   });
+  bootStep('利用のきまりの知らせ', () => { termsInit(); $opt('#btn-termsok').onclick = termsOk; });
   bootStep('入力の欄', buildForm); bootStep('位置', getGps); bootStep('ログインの表示', renderAuth); bootMark(loggedIn() ? 'ログイン済み(通行証あり)' : 'ログインの画面を出した'); bootStep('ログインの部品', loadGsi);
   bootStep('出し直し', () => { const rg = document.getElementById('btn-regsi'); if (rg) rg.onclick = () => { loadGsi(); renderAuth(); };
     document.addEventListener('click', e => { if (e.target.closest('button.regsi')) { loadGsi(); renderAuth(); } }); });   // その場の「Google のボタンを出し直す」(全員の記録・管理・設定)
