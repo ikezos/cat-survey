@@ -354,17 +354,17 @@ function denyAccess(err) {
   renderAuth(); toast(errText(err), 7000);
 }
 // 利用のきまりの更新の知らせ(v47): 今までの人にだけ、ログインしている時に出し、「わかった」で端末に覚える。新しい人はログインの画面で文を読むので出さない(初めて開いた時に「出した」扱いにする)
-const TERMS_KEY = 'catSurvey.termsNotice';   // wait=これから出す / seen=もう出さない
+const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261101';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
-    const v = localStorage.getItem(TERMS_KEY); if (v === 'seen') return; if (v === 'wait') { termsWait = true; return; }
+    const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
     let log = []; try { log = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); } catch { log = []; }
-    termsWait = !!(localStorage.getItem(AUTH_KEY) || localStorage.getItem(OPT_KEY) || (Array.isArray(log) && log.some(x => x && x.ver && x.ver !== APP_VER)));
-    localStorage.setItem(TERMS_KEY, termsWait ? 'wait' : 'seen');
+    termsWait = /^seen/.test(v || '') || !!(localStorage.getItem(AUTH_KEY) || localStorage.getItem(OPT_KEY) || (Array.isArray(log) && log.some(x => x && x.ver && x.ver !== APP_VER)));
+    localStorage.setItem(TERMS_KEY, termsWait ? 'wait' : TERMS_SEEN);
   } catch { termsWait = false; }   // 覚えられない端末には出さない(開くたびに出さないように)
 }
 function renderTerms() { const m = document.getElementById('termsmsg'); if (m) m.classList.toggle('hidden', !(termsWait && loggedIn())); }
-function termsOk() { termsWait = false; try { localStorage.setItem(TERMS_KEY, 'seen'); } catch { /* 覚えられない端末 */ } renderTerms(); }
+function termsOk() { termsWait = false; try { localStorage.setItem(TERMS_KEY, TERMS_SEEN); } catch { /* 覚えられない端末 */ } renderTerms(); }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
   auth = null; homeSrv = null; gReset(); saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
@@ -462,6 +462,21 @@ function initGsi() {
     if (auth && !isCard() && !tokenValid()) google.accounts.id.prompt(); // 前に Google でログインした人は、期限が切れていれば取り直しを促す
   } catch { gsiState = 'failed'; }
 }
+// 呼び名(2026-10-31 v49): 本人が設定の画面で決める。管理者は消せるだけ。空なら整理番号(ID)で出る
+const myName = () => !auth ? '' : (isCard() ? auth.name : auth.myName) || '';
+function renderMyName() {
+  const on = loggedIn(), box = $('#nickset'); box.classList.toggle('hidden', !on); if (!on) return;
+  const el = $('#my-name'), n = myName(); if (document.activeElement !== el) el.value = n;
+  $('#my-name-note').textContent = n ? '' : `空のままなら、整理番号(ID ${String(auth.recorderId || '').slice(0, 6)})で表示します。`;
+}
+async function saveMyName(btn) {
+  await busy(btn, async () => {
+    const r = await api('setMyName', { name: $('#my-name').value }); if (!r.ok) return toast(errText(r.error), 6000);
+    if (isCard()) auth.name = r.name; else auth.myName = r.name; saveAuth();
+    $('#my-name').blur(); renderAuth(); listMemo.clear(); gstat = null;   // 一覧・グループの名前は次に開いた時に新しくなる
+    toast(r.unchanged ? '変わっていません' : r.name ? `呼び名を「${r.name}」にしました` : '呼び名を消しました。整理番号で表示します');
+  }, '保存しています…');
+}
 let wasLoggedIn = false;
 function renderAuth() {
   const on = loggedIn(), idTail = auth && auth.recorderId ? `(ID ${auth.recorderId.slice(0, 6)})` : '';
@@ -480,7 +495,7 @@ function renderAuth() {
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。全員の記録は、Google でログインした人だけが見られます。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
-  renderScopeBar(); renderJoinNote(); renderHomeGroup(); renderTerms();
+  renderScopeBar(); renderJoinNote(); renderHomeGroup(); renderTerms(); renderMyName();
   $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
   if (on && !wasLoggedIn) { wasLoggedIn = true; showTab(joinCode ? 'join' : 'home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
@@ -507,6 +522,7 @@ function applyMeta(r) {
   if (r.viaPass && auth && !isCard()) r = { ...r, viewAll: auth.viewAll, admin: auth.admin };   // 通行証で通った返事は役割を返さない(前の ID トークンで分かった役割を消さない)
   if (auth && auth.viewAll !== !!r.viewAll) { auth.viewAll = !!r.viewAll; saveAuth(); if (!auth.viewAll && scope === 'all') setScope('mine', true); renderScopeBar(); }
   if (auth && (auth.admin !== !!r.admin || (r.name != null && isCard() && auth.name !== r.name))) { auth.admin = !!r.admin; if (isCard() && r.name != null) auth.name = r.name; saveAuth(); renderAuth(); }
+  if (auth && !isCard() && r.myName != null && auth.myName !== r.myName) { auth.myName = r.myName; saveAuth(); renderMyName(); }   // 呼び名(2026-10-31 v49。カードの人は auth.name)
   if (!('options' in r)) return;   // 古い受け付けは options を返さない=何も変えない
   const before = JSON.stringify([FIELDS.map(f => f[2]), PET_REASONS]);
   applyOptions(r.options); r.options ? localStorage.setItem(OPT_KEY, JSON.stringify(r.options)) : localStorage.removeItem(OPT_KEY);
@@ -595,7 +611,7 @@ const ERR_TEXT = {
   stopped: 'このアカウントは止められています。管理者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
   card_stopped: 'このカードは止まっています。管理者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。管理者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
-  bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前(呼び名)は20字までで入れてください(カードの人は空にできません)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
+  bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前は20字までで入れてください。', name_long: '呼び名は12字までです。', name_contact: '呼び名にメールアドレスや電話番号は入れられません。', name_form: '呼び名に使えない形です(改行や見えない文字、=・+・- で始まる形)。', memo_long: 'メモは60字までです。', memo_form: 'メモに使えない形です(改行や見えない文字、=・+・- で始まる形)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
   network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
   server_not_configured: 'サーバー側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
@@ -2237,29 +2253,31 @@ async function renderAdmin() {
   const people = r.recorders.slice().sort((a, b) => (a.type === 'card') - (b.type === 'card') || (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
   const person = x => {
     const mail = adminShow.has(x.key) ? esc(x.email) : esc(x.masked);
-    const title = x.type === 'card' ? esc(x.name || '(呼び名なし)') : (x.name ? esc(x.name) : mail);   // 名前があれば名前(2026-10-28 0910。Google の人にも)
+    const title = x.type === 'card' ? esc(x.name || `ID ${String(x.recorderId || '').slice(0, 6)}`) : (x.name ? esc(x.name) : mail);   // 名前があれば名前(2026-10-28 0910。Google の人にも)
     const last = x.lastUsed ? fmtShort(x.lastUsed) : (x.firstLogin ? fmtShort(x.firstLogin) : 'まだ使っていない');
     return `<div class="card person${x.stopped ? ' stopped' : ''}" data-key="${esc(x.key)}">
       <div class="ptop"><b class="pname">${title}</b><span class="mark ${x.type === 'card' ? 'chg' : 'edit'}">${x.type === 'card' ? 'カード' : 'Google'}</span>${x.type === 'google' ? `<button type="button" class="tiny" data-act="peek">${adminShow.has(x.key) ? '隠す' : 'メールを見る'}</button>` : ''}</div>
       ${x.type === 'google' && x.name ? `<div class="note pmail">${mail}</div>` : ''}
       <div class="note">${x.type === 'card' ? `番号を間違えた回数: ${x.fails}${x.roleIgnored ? '・シートの役割は無視されます' : ''}` : `役割: <select class="rolesel" data-act="role" aria-label="役割">${ROLE_OPTIONS(x.role)}</select>`}
       <br>状態: <b>${x.stopped ? esc('止めた' + (x.state && x.state !== '止めた' ? '(' + x.state + ')' : '')) : '使える'}</b>・最後に使った: ${esc(last)}${x.recorderId ? `・ID ${esc(String(x.recorderId).slice(0, 6))}` : ''}</div>
-      <div class="row"><button type="button" class="small" data-act="rename">名前を変える</button><button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}</div></div>`; };
-  box.innerHTML = `<div class="card"><h3>Google の人を登録</h3><p class="note">Google アカウントで入力する人。メールアドレスと役割を入れます(メールはこの画面でも伏字で出ます)。名前(例: 東町Bさん)を入れると、一覧と全員の記録で、その名前で出ます(空でもよい・あとで変えられます)。</p>
-      <label class="fl">名前(なくてもよい)<input id="ad-gname" type="text" maxlength="20" autocomplete="off" placeholder="例: 東町Bさん"></label>
+      <label class="fl">管理者のメモ<input class="ad-memo" type="text" maxlength="60" autocomplete="off" placeholder="例: 渡した相手など" value="${esc(x.memo || '')}"></label>
+      <p class="note">このメモは管理者だけが見られます。</p>
+      <div class="row"><button type="button" class="small" data-act="savememo">メモを保存</button>${x.name ? '<button type="button" class="small" data-act="clearname">呼び名を消す</button>' : ''}<button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}</div></div>`; };
+  box.innerHTML = `<div class="card"><h3>Google の人を登録</h3><p class="note">Google アカウントで入力する人。メールアドレスと役割を入れます(メールはこの画面でも伏字で出ます)。呼び名は本人が決めます。</p>
       <label class="fl">メールアドレス<input id="ad-email" type="email" inputmode="email" autocomplete="off" placeholder="例: taro@example.com"></label>
       <label class="fl">役割<select id="ad-role" class="rolesel wide">${ROLE_OPTIONS('')}</select></label>
       <button type="button" id="ad-add" class="wide">この人を登録する</button></div>
-    <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。呼び名(本名でなくてよい。例: 東町Aさん)と、その人に伝える暗証番号(数字4つ)を入れます。合言葉は作った直後の画面に1回だけ出ます(サーバーにもシートにも残りません)。</p>
-      <label class="fl">呼び名<input id="ad-name" type="text" maxlength="20" autocomplete="off" placeholder="例: 東町Aさん"></label>
+    <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。その人に伝える暗証番号(数字4つ)を入れます。整理番号(ID)はカードごとに自動で付きます。合言葉は作った直後の画面に1回だけ出ます(サーバーにもシートにも残りません)。</p>
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
+      <label class="fl">管理者のメモ(なくてもよい)<input id="ad-card-memo" type="text" maxlength="60" autocomplete="off" placeholder="例: 渡した相手など"></label>
+      <p class="note">このメモは管理者だけが見られます。カードには印刷されません。</p>
       <button type="button" id="ad-card" class="primary">カードを作る(QR を出す)</button></div>
     <h3 class="listhead">入力者の一覧(${people.length}人・管理者 ${r.admins}人)</h3>
     ${people.length ? `<div class="card pfind"><label class="fl">名前か ID で探す<input id="ad-q" type="search" autocomplete="off" placeholder="名前か ID の一部" value="${esc(adminFind.q)}"></label>
       <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
     <div id="ad-groups"></div>
-    <div class="card ad-notes"><p class="note">カードの人は、入力と自分の記録の直しができます。</p><p class="note">グループに入っていれば、グループの記録も見られます。</p><p class="note">カードの人に役割は付けられません。グループを作る・リーダーにはなれません。</p><p class="note">「止める」は記録を消しません。止めると、その人の端末のログインも使えなくなります。</p><p class="note">なくした時は「カードを作り直す」。前のカードは使えなくなり、記録はつながります。</p><p class="note">番号を忘れた・5回まちがえて止まった時は「番号を戻す」。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p></div>
+    <div class="card ad-notes"><p class="note">呼び名は本人が設定の画面で決めます。</p><p class="note">管理者は消すだけです。シートの名前の列も変えないでください。</p><p class="note">カードの人は、入力と自分の記録の直しができます。</p><p class="note">グループに入っていれば、グループの記録も見られます。</p><p class="note">カードの人に役割は付けられません。グループを作る・リーダーにはなれません。</p><p class="note">「止める」は記録を消しません。止めると、その人の端末のログインも使えなくなります。</p><p class="note">なくした時は「カードを作り直す」。前のカードは使えなくなり、記録はつながります。</p><p class="note">番号を忘れた・5回まちがえて止まった時は「番号を戻す」。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
@@ -2417,22 +2435,30 @@ async function adminClick(b, e) {
   if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-bugs') return openBugAdmin();
   if (b.id === 'ad-add') {
-    const email = $('#ad-email').value.trim(), role = $('#ad-role').value, name = $('#ad-gname').value.replace(/\s+/g, ' ').trim(); if (!email) return toast('メールアドレスを入れてください');
-    if (name.length > 20) return toast('名前は20字までです');
-    const r = await adminApi('adminAddGoogle', { email, role, name }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
-    toast(`登録しました(${r.recorder.name ? r.recorder.name + '・' : ''}${r.recorder.masked})`); return renderAdmin();
+    const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
+    const r = await adminApi('adminAddGoogle', { email, role }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
+    toast(`登録しました(${r.recorder.masked})`); return renderAdmin();
   }
   if (b.id === 'ad-card') {
-    const name = $('#ad-name').value.replace(/\s+/g, ' ').trim(), pin = $('#ad-pin').value;
-    if (!name) return toast('呼び名を入れてください'); if (!/^[0-9]{4}$/.test(pin)) return toast('暗証番号は数字4つです');
-    const r = await adminApi('adminCardCreate', { name, pin });
+    const pin = $('#ad-pin').value;
+    if (!/^[0-9]{4}$/.test(pin)) return toast('暗証番号は数字4つです');
+    const r = await adminApi('adminCardCreate', { pin, memo: $('#ad-card-memo').value });
     if (!r.ok) { if (r.error === 'already_done') { renderAdmin(); return toast('このカードは、もう作られています(前に押した時の返事が届かなかったようです)。一覧のその人の「カードを作り直す」で QR を出してください。', 9000); } return toast(errText(r.error), 5000); }
-    $('#ad-name').value = ''; $('#ad-pin').value = '';
-    return showCardResult({ secret: r.secret, name: r.recorder.name, pin, fresh: true });
+    $('#ad-pin').value = ''; $('#ad-card-memo').value = '';
+    return showCardResult({ secret: r.secret, name: r.recorder.name || `ID ${r.recorder.recorderId.slice(0, 6)}`, pin, fresh: true });
   }
   const card = e.target.closest('.person'); if (!card || !adminData) return; const key = card.dataset.key, x = adminData.recorders.find(p => p.key === key); if (!x) return;
-  const act = b.dataset.act, label = x.type === 'card' ? x.name : (x.name || x.masked);
-  if (act === 'rename') return openNameForm(x);
+  const act = b.dataset.act, label = x.type === 'card' ? (x.name || `ID ${String(x.recorderId || '').slice(0, 6)}`) : (x.name || x.masked);
+  if (act === 'savememo') {
+    const r = await adminApi('adminSetMemo', { key, memo: card.querySelector('.ad-memo').value });
+    if (r.ok || r.error === 'already_done') { toast(r.ok ? (r.unchanged ? 'メモは変わっていません' : 'メモを保存しました') : 'メモは保存されています', 4000); return renderAdmin(); }
+    return toast(errText(r.error), 5000);
+  }
+  if (act === 'clearname') {
+    if (!confirm(`呼び名「${x.name}」を消します。整理番号(ID)で出るようになります。本人はまた決められます。よろしいですか?`)) return;
+    const r = await adminApi('adminClearName', { key }); if (!r.ok) return toast(errText(r.error), 5000);
+    toast('呼び名を消しました'); return renderAdmin();
+  }
   if (act === 'peek') { if (adminShow.has(key)) adminShow.delete(key); else adminShow.add(key); return renderAdmin(); }
   if (act === 'stop' || act === 'restore') {
     const stopped = act === 'stop';
@@ -2443,7 +2469,7 @@ async function adminClick(b, e) {
   if (act === 'resetpin') return openPinForm({ title: `${label} の番号を戻す`, note: 'この人に伝える新しい暗証番号(数字4つ)を入れてください。カードはそのまま使えます。この人の端末では、もう一度カードをかざして新しい番号を入れることになります。', button: 'この番号にする',
     onsubmit: async pin => { const r = await adminApi('adminCardResetPin', { key, pin }); if (!r.ok) return toast(errText(r.error), 5000); closeSheet(); toast('番号を戻しました。新しい番号をその人に伝えてください', 5000); renderAdmin(); } });
   if (act === 'reissue') return openPinForm({ title: `${label} のカードを作り直す`, note: '前のカードは使えなくなります(記録はつながります)。新しいカードの暗証番号(数字4つ)を入れてください。', button: '作り直す(QR を出す)',
-    onsubmit: async pin => { const r = await adminApi('adminCardReissue', { key, pin }); if (!r.ok) return toast(errText(r.error), 5000); showCardResult({ secret: r.secret, name: r.recorder.name, pin, fresh: false }); } });
+    onsubmit: async pin => { const r = await adminApi('adminCardReissue', { key, pin }); if (!r.ok) return toast(errText(r.error), 5000); showCardResult({ secret: r.secret, name: r.recorder.name || `ID ${r.recorder.recorderId.slice(0, 6)}`, pin, fresh: false }); } });
 }
 // 一覧の「役割」の選択肢を変えた時
 async function onAdminChange(e) {
@@ -2452,23 +2478,6 @@ async function onAdminChange(e) {
   sel.disabled = true; const r = await adminApi('adminSetRole', { key, role: sel.value }); sel.disabled = false;   // 返事が来るまで選び直せない
   if (!r.ok) { toast(errText(r.error), 5000); sel.value = x.role; return; }
   toast(r.unchanged ? '変わっていません' : `役割を「${ROLE_LABEL(sel.value)}」にしました`); renderAdmin();
-}
-// 名前を変える小さな画面(2026-10-28 0910。カード・Google のどちらも。Google の人は空にもできる)
-function openNameForm(x) {
-  const card = x.type === 'card';
-  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>名前を変える</b></div>
-  <div class="sheetbody"><div class="card"><p class="note">${card ? 'カードの人の呼び名です。ログインした時にこの名前で出ます(空にはできません)。' : `${esc(x.masked)} の人の名前です。空にすると、名前なし(ID で出る)に戻ります。`}全員の記録を見られる人には、この名前で出ます。</p>
-  <label class="fl">名前(20字まで)<input id="nf-name" type="text" maxlength="20" autocomplete="off" value="${esc(x.name || '')}" placeholder="例: 東町Bさん"></label>
-  <p id="nf-msg" class="warn hidden"></p>
-  <button type="button" id="nf-go" class="primary">この名前にする</button><button type="button" id="nf-cancel" class="wide">やめる</button></div></div>`);
-  const msg = t => { const el = $('#nf-msg'); el.textContent = t; el.classList.toggle('hidden', !t); };
-  $('#s-back').onclick = $('#nf-cancel').onclick = () => closeSheet();
-  $('#nf-go').onclick = e => busy(e.currentTarget, async () => {
-    const name = $('#nf-name').value.replace(/\s+/g, ' ').trim();
-    if (card && !name) return msg('カードの人の呼び名は空にできません'); if (name.length > 20) return msg('名前は20字までです');
-    const r = await adminApi('adminSetName', { key: x.key, name }); if (!r.ok) return msg(errText(r.error));
-    closeSheet(); toast(r.unchanged ? '変わっていません' : name ? `名前を「${name}」にしました` : '名前を消しました'); renderAdmin();
-  }, '変えています…');
 }
 // 暗証番号を1つ聞く小さな画面(管理の操作)
 function openPinForm({ title, note, button, onsubmit }) {
@@ -2513,7 +2522,7 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v48';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v49';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2916,6 +2925,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#btn-send').onclick = e => busy(e.currentTarget, () => sendPending(false), '送っています…');
   $('#btn-refresh').onclick = e => busy(e.currentTarget, () => refreshFromServer(false).catch(err => toast(dbErrText(err), 6000)), '取り直しています…');
   $('#btn-logout').onclick = logout;
+  $('#btn-myname').onclick = e => saveMyName(e.currentTarget);
   });
   bootStep('版の知らせ', () => {
   $opt('#btn-update').onclick = doUpdate;

@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v48">
+<meta name="app-ver" content="cat-survey-v49">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=48">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=48">
-<link rel="stylesheet" href="style.css?v=48">
+<link rel="stylesheet" href="lib/leaflet.css?v=49">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=49">
+<link rel="stylesheet" href="style.css?v=49">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -53,7 +53,7 @@ setTimeout(function () {
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="updmsg" class="updmsg hidden" role="status"><p>新しい版があります。</p><button type="button" id="btn-update" class="small">更新</button></div>
-  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>(集めた記録の使い道を書き足しました)</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
+  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 呼び名は自分で決められるようになりました。管理者がカードを渡した相手をメモすることがあります(本人やほかの人には見えません)。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -202,6 +202,13 @@ setTimeout(function () {
     <div id="reloginset" class="relogin hidden"><h4>Google でもう一度ログイン</h4><p class="note">「全員の記録」や「管理」で、もう一度確かめるように出た時は、ここからも確かめ直せます。ログアウトはしません。</p><p id="reloginstate" class="note"></p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
     <button id="btn-logout" class="wide">ログアウト</button>
   </div>
+  <div class="card hidden" id="nickset">
+    <h3>呼び名</h3>
+    <p class="note">グループや一覧で、あなたの名前として出ます。本名でなくてかまいません。メールアドレスや電話番号は入れないでください。</p>
+    <label class="fl">呼び名(12字まで)<input id="my-name" type="text" maxlength="12" autocomplete="off" enterkeyhint="done"></label>
+    <p id="my-name-note" class="note"></p>
+    <button id="btn-myname" class="wide">保存する</button>
+  </div>
   <div class="card">
     <h3>送り先</h3>
     <p id="cfginfo" class="note"></p>
@@ -229,12 +236,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=48"></script>
-<script src="lib/leaflet.markercluster.js?v=48"></script>
-<script src="lib/qr.js?v=48"></script>
-<script src="lib/jsQR.js?v=48"></script>
-<script src="scan.js?v=48"></script>
-<script src="config.js?v=48"></script>
-<script src="app.js?v=48"></script>
+<script src="lib/leaflet.js?v=49"></script>
+<script src="lib/leaflet.markercluster.js?v=49"></script>
+<script src="lib/qr.js?v=49"></script>
+<script src="lib/jsQR.js?v=49"></script>
+<script src="scan.js?v=49"></script>
+<script src="config.js?v=49"></script>
+<script src="app.js?v=49"></script>
 </body>
 </html>
