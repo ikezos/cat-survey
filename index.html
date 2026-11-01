@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v49">
+<meta name="app-ver" content="cat-survey-v50">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=49">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=49">
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="lib/leaflet.css?v=50">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=50">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -53,7 +53,7 @@ setTimeout(function () {
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="updmsg" class="updmsg hidden" role="status"><p>新しい版があります。</p><button type="button" id="btn-update" class="small">更新</button></div>
-  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 呼び名は自分で決められるようになりました。管理者がカードを渡した相手をメモすることがあります(本人やほかの人には見えません)。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
+  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 問い合わせの窓口が LINE の「ikezosアプリ問い合わせ」になりました。</p><p>現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -218,6 +218,18 @@ setTimeout(function () {
     <p class="note">集めた記録の使い道などを書いています。ログインの前の画面と同じ文書です。</p>
     <a class="linkbtn" id="privacy-settings" href="privacy.html">利用のきまりを見る</a>
   </div>
+  <div class="card" id="trialset">
+    <h3>試用版について</h3>
+    <p class="note">現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p>
+  </div>
+  <div class="card" id="contactset">
+    <h3>問い合わせ</h3>
+    <p class="note">LINE の「ikezosアプリ問い合わせ」で受け付けています。</p>
+    <a class="linkbtn" id="contact-line" href="https://lin.ee/600DoZ1" target="_blank" rel="noopener noreferrer">LINE で問い合わせる</a>
+    <p class="note">LINE を使わない方は、こちらへ。</p>
+    <a class="linkbtn" id="contact-mail" href="mailto:support@ikezos.com">support@ikezos.com</a>
+    <p class="note">LINE でお問い合わせいただいた内容は、LINE ヤフー株式会社のサービス上に保存されます。猫の居場所・人の名前・写真など、個人を特定できる情報は送らないでください。</p>
+  </div>
   <div class="card">
     <h3>この端末</h3>
     <button id="btn-demo" class="wide hidden">見本のデータを入れる(名古屋市内・20頭)</button>
@@ -236,12 +248,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=49"></script>
-<script src="lib/leaflet.markercluster.js?v=49"></script>
-<script src="lib/qr.js?v=49"></script>
-<script src="lib/jsQR.js?v=49"></script>
-<script src="scan.js?v=49"></script>
-<script src="config.js?v=49"></script>
-<script src="app.js?v=49"></script>
+<script src="lib/leaflet.js?v=50"></script>
+<script src="lib/leaflet.markercluster.js?v=50"></script>
+<script src="lib/qr.js?v=50"></script>
+<script src="lib/jsQR.js?v=50"></script>
+<script src="scan.js?v=50"></script>
+<script src="config.js?v=50"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
