@@ -86,7 +86,8 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const ASSET_V = 30;   // sw.js の VER と同じ。中身が変わる物(画像・PDF)は ?v=版 を付けて読む(同じ名前で古い控えが出続けないように)
+const APP_VER = 'cat-survey-v51';   // sw.js のキャッシュの名前と同じにする
+const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
 const COAT_SVG = (() => {
@@ -2520,7 +2521,6 @@ function showCardResult({ secret, name, pin, fresh }) {
 // 設定の「不具合を知らせる」: 文(画面・何をしたら・どうなった)と画面の写し(任意・2枚まで・縮めて位置情報を消す)を受け付けへ。電波が無ければ端末に残して後で送る。
 // 自動で添えるのは、版・端末の種類(OS とブラウザの大まかな名前)・画面の名前・直前の誤り(最大5件)だけ。場所・記録の中身・記録の ID・名前・メールは入れない。
 // アプリが自分で気付いた誤り(画面の誤り・保存や送信の失敗・受け付けの断り)は、端末に最大20件控え、1日1回まとめて送る(設定で止められる)。
-const APP_VER = 'cat-survey-v50';   // sw.js のキャッシュの名前と同じにする
 const BUG_SCREENS = ['猫の入力', 'えさ場', '一覧', '地図', '集計', '設定', '管理', 'ログイン', 'その他'];
 const TAB_SCREEN = { record: '猫の入力', sites: 'えさ場', list: '一覧', map: '地図', stats: '集計', settings: '設定', admin: '管理' };
 const BUG_TEXT_MAX = 500, BUG_PHOTOS = 2, BUG_SIDE = 1280, ERR_KEY = 'catSurvey.errlog', ERR_BATCH = 'catSurvey.errBatch', ERR_DAY = 'catSurvey.errSentDay', ERR_MAX = 20;
@@ -2769,10 +2769,22 @@ let swReg = null, updAsked = false, updReloaded = false, updQuiet = false, lastU
 function inStartup() {   // 起動の直後で、まだ何も触っていない・入力も無い
   return !userTouched && Date.now() - bootT0 < STARTUP_MS && !typingNow() && Date.now() - Number(sessionStorage.getItem(AUTO_UPD_KEY) || 0) > 60000;
 }
+// 入れ替えを頼む。通信の始まりと重なると、止まった古い sw がその通信で起こし直され、入れ替わりが進まない。次の開き直しの要求を持ったまま古い sw が止められ、画面が固まる(20261101。頼み直しても抜けられない)。だから通信が静かになってから1回だけ頼む
+const NET_QUIET_MS = 800, QUIET_MAX_MS = 15000, QUIET_MAX_ASKED_MS = 3000;   // ASKED: 「更新」を押した・起動の直後(5秒で読み込み直すので、その前に頼む)
+let netBusy = 0, netLast = 0;
+if (window.fetch) { const realFetch = window.fetch; window.fetch = function (...a) { const done = () => { netBusy--; netLast = Date.now(); }; netBusy++; netLast = Date.now(); const p = realFetch.apply(this, a); p.then(done, done); return p; }; }
+function askSkip(w, maxMs) {
+  const t0 = Date.now();
+  (function tick() {
+    if (w.state !== 'installed') return;
+    if ((document.readyState === 'complete' && !netBusy && Date.now() - netLast >= NET_QUIET_MS) || Date.now() - t0 >= maxMs) w.postMessage({ type: 'skipWaiting' });
+    else setTimeout(tick, 100);
+  })();
+}
 function autoUpdate(w) {   // 起動の直後だけ: 押さなくても1回だけ入れ替えて読み込み直す
   sessionStorage.setItem(AUTO_UPD_KEY, String(Date.now())); bootMark('新しい版に自動で入れ替え');
   updAsked = true;
-  if (w) { w.postMessage({ type: 'skipWaiting' }); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }
+  if (w) { askSkip(w, QUIET_MAX_ASKED_MS); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }
   else { updReloaded = true; location.reload(); }
 }
 function showUpdMsg() { const m = document.getElementById('updmsg'); if (m) m.classList.remove('hidden'); }
@@ -2782,7 +2794,7 @@ function swVer(w) {   // 待っている版の名前を聞く(答えが無けれ
 async function onWaiting(w) {
   if (!w || !navigator.serviceWorker.controller) return;
   const v = await swVer(w);
-  if (v && v === APP_VER) { updQuiet = true; w.postMessage({ type: 'skipWaiting' }); return; }   // 画面はもう新しい版。黙って入れ替える
+  if (v && v === APP_VER) { updQuiet = true; askSkip(w, QUIET_MAX_MS); return; }   // 画面はもう新しい版。黙って入れ替える
   if (inStartup()) return autoUpdate(w);
   showUpdMsg();
 }
@@ -2805,7 +2817,7 @@ async function checkUpdate(byHand) {   // byHand: 設定の「新しい版を確
 function doUpdate() {
   if (typingNow()) return toast('入力の途中です。保存してから「更新」を押してください(入力は消えていません)', 6000);
   const w = swReg && swReg.waiting;
-  if (w) { updAsked = true; w.postMessage({ type: 'skipWaiting' }); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }   // 入れ替わりの知らせが来なければ5秒で読み込み直す
+  if (w) { updAsked = true; askSkip(w, QUIET_MAX_ASKED_MS); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }   // 入れ替わりの知らせが来なければ5秒で読み込み直す
   else { updReloaded = true; location.reload(); }   // もう入れ替わっている(ほかの画面で更新された)
 }
 
