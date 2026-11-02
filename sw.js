@@ -23,7 +23,8 @@
 // 20261102 access-audit(v55): 変化の時刻を画面へ出す所の直し(迂回の点検)。控えの決まりは前と同じ。
 // 20261102 terms-withdrawal(v56): 利用のきまりに退会した時の記録の扱いを足した(知らせをもう一度出す)・説明書に管理者の項を足した。控えの決まりは前と同じ。
 // 20261102 apply-guide(v57): ログインの前の画面・登録されていない時に、利用の申し込み(公式 LINE・メール)の案内を足した。控えの決まりは前と同じ。
-const VER = 57, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+// 20261102 email-encrypt(v58): 管理の「メールを見る」で、受け付け 版48 が暗号を戻して返すメールを出す(移し替えた人)。控えの決まりは前と同じ。
+const VER = 58, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);

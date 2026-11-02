@@ -86,7 +86,7 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const APP_VER = 'cat-survey-v57';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v58';   // sw.js のキャッシュの名前と同じにする
 const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
@@ -384,7 +384,7 @@ function denyAccess(err) {
   renderAuth(); toast(errText(err), 7000);
 }
 // 利用のきまりの更新の知らせ(v47): ログインしている時に出し、「わかった」で端末に覚える。v50 から新しい人にも1回出す(試用版の注意を見てもらうため)
-const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102b';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
+const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102c';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
     const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
@@ -646,6 +646,9 @@ const ERR_TEXT = {
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
   server_not_configured: 'サーバー側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
   busy: 'サーバーが混んでいます。少し待ってもう一度送ってください。',
+  email_key_missing: 'メールの鍵がサーバーに無いため、メールを見る・新しい登録ができません(ログインと、ほかの管理は使えます)。管理者(艦長)へ連絡してください。', email_unreadable: 'このメールは戻せませんでした(鍵が違うか、シートの値が書き換えられています)。管理者(艦長)へ連絡してください。',   // 受け付け 版48
+  email_key_in_use: '鍵は作り直せません(もう鍵でしまったメールがあります。作り直すとログインできなくなります)。', email_key_bad: '鍵の片方が無いか、形が違います。新しい鍵は作っていません。説明書の「メールの鍵の控えから戻す」の手で入れ直してください。',
+  email_key_restore: '鍵が消えています。新しい鍵は作っていません(作ると戻せなくなります)。説明書の「メールの鍵の控えから戻す」の手で、控えを入れ直してください。', email_key_mismatch: '鍵が、しまってあるメールと合いません(控えの写し間違いかもしれません)。新しい鍵は作っていません。控えを見直して入れ直してください。',   // 受け付け 版48(艦長 msg 8847)
   timeout: WEAK_TEXT_TRY,
   already_done: 'この操作は、もうサーバーで済んでいます(二度押しや送り直しの分は、行いませんでした)。一覧を見てください。',
   deleted: 'この記録・えさ場は削除されています(元に戻してから直してください)。', restore_expired: '削除してから30日を過ぎたので、元に戻せません(シートの行は残っています。管理者に相談してください)。',
@@ -2266,7 +2269,7 @@ async function deleteSight(id, sightId, local) {
 // ---- 管理の画面(役割「管理者」の Google の人だけ。受け付けも毎回「管理者か」で照らす)----
 const ROLE_LABEL = r => r === '管理者' ? '管理者' : r === '全体を見る' ? '全体を見る' : '入力者';
 const ROLE_OPTIONS = sel => ['', '全体を見る', '管理者'].map(r => `<option value="${r}"${r === sel ? ' selected' : ''}>${ROLE_LABEL(r)}</option>`).join('');
-let adminData = null, adminShow = new Set();   // adminShow: メールを全部見せている人の鍵
+let adminData = null, adminShow = new Map();   // adminShow: メールを全部見せている人の鍵 → メール(v58: 受け付け 版48 で移した人は、押した時に受け付けから1件ずつ戻す。端末には保存しない)
 async function renderAdmin() {
   const box = $('#admin'); if (!box) return;
   if (!(loggedIn() && auth.admin && !isCard())) { box.innerHTML = '<div class="card"><p class="note">この画面は、「管理者」の役割になっている Google アカウントの人だけが使えます。</p></div>'; return; }
@@ -2282,7 +2285,7 @@ async function renderAdmin() {
   adminData = r;
   const people = r.recorders.slice().sort((a, b) => (a.type === 'card') - (b.type === 'card') || (a.name || a.email).localeCompare(b.name || b.email, 'ja'));
   const person = x => {
-    const mail = adminShow.has(x.key) ? esc(x.email) : esc(x.masked);
+    const mail = adminShow.has(x.key) ? esc(adminShow.get(x.key)) : esc(x.masked);
     const title = x.type === 'card' ? esc(x.name || `ID ${String(x.recorderId || '').slice(0, 6)}`) : (x.name ? esc(x.name) : mail);   // 名前があれば名前(2026-10-28 0910。Google の人にも)
     const last = x.lastUsed ? fmtShort(x.lastUsed) : (x.firstLogin ? fmtShort(x.firstLogin) : 'まだ使っていない');
     return `<div class="card person${x.stopped ? ' stopped' : ''}" data-key="${esc(x.key)}">
@@ -2298,6 +2301,9 @@ async function renderAdmin() {
       <label class="fl">役割<select id="ad-role" class="rolesel wide">${ROLE_OPTIONS('')}</select></label>
       <button type="button" id="ad-add" class="wide">この人を登録する</button></div>
     <div id="ad-rolepin"></div>
+    <div class="card" id="ad-emailkey"><h3>メールの鍵</h3><p class="note">ログインに使うメールアドレスは、鍵で暗号にしてシートに持ちます。はじめに1回「鍵を作る」を押し、出てきた控えをパスワード管理に保存してから「移し替え」を押します。控えは作った時の1回しか出ません。</p>
+      <button type="button" id="ad-ek-setup" class="wide">鍵を作る(ある時は確かめる)</button>
+      <button type="button" id="ad-ek-migrate" class="wide">移し替え(メールを暗号にする)</button></div>
     <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。その人に伝える暗証番号(数字4つ)を入れます。整理番号(ID)はカードごとに自動で付きます。合言葉は作った直後の画面に1回だけ出ます(サーバーにもシートにも残りません)。</p>
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
       <label class="fl">管理者のメモ(なくてもよい)<input id="ad-card-memo" type="text" maxlength="60" autocomplete="off" placeholder="例: 渡した相手など"></label>
@@ -2545,6 +2551,13 @@ async function adminClick(b, e) {
   if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-bugs') return openBugAdmin();
   if (b.id === 'ad-rp-change') { const st = await api('adminRolePinStatus'); if (!st.ok) return toast(errText(st.error), 5000); return openRolePinSet(st.set); }
+  if (b.id === 'ad-ek-setup') return emailKeySetup(false);
+  if (b.id === 'ad-ek-migrate') {
+    if (!confirm('鍵の控えをパスワード管理に保存しましたか?\n保存してから、メールの移し替えをします(何度押しても同じ所に落ちます)。')) return;
+    const r = await adminApi('adminMigrateEmails', {});
+    if (!r.ok) return toast(r.error === 'email_migrate_stop' && r.msg ? r.msg : errText(r.error), 9000);
+    toast(r.msg, 6000); return renderAdmin();
+  }
   if (b.id === 'ad-add') {
     const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
     const add = rolePin => adminApi('adminAddGoogle', { email, role }, rolePin ? { rolePin } : undefined);
@@ -2573,7 +2586,12 @@ async function adminClick(b, e) {
     const r = await adminApi('adminClearName', { key }); if (!r.ok) return toast(errText(r.error), 5000);
     toast('呼び名を消しました'); return renderAdmin();
   }
-  if (act === 'peek') { if (adminShow.has(key)) adminShow.delete(key); else adminShow.add(key); return renderAdmin(); }
+  if (act === 'peek') {
+    if (adminShow.has(key)) { adminShow.delete(key); return renderAdmin(); }
+    if (!x.sealed) { adminShow.set(key, x.email); return renderAdmin(); }   // 前の受け付け(47)・移し替えの前の人: 一覧に入っているメール
+    const r = await api('adminRevealEmail', { key }); if (!r.ok) return toast(errText(r.error), 6000);   // v58: 移した人は、受け付けが暗号を戻して返す(管理の記録に残る)
+    adminShow.set(key, r.email); return renderAdmin();
+  }
   if (act === 'stop' || act === 'restore') {
     const stopped = act === 'stop';
     if (stopped && !confirm(`${label} を止めます。記録は消えません。${x.type === 'card' ? 'この人の端末のログインも使えなくなります。' : ''}よろしいですか?`)) return;
@@ -2606,6 +2624,27 @@ function openPinForm({ title, note, button, onsubmit }) {
   $('#s-back').onclick = $('#pf-cancel').onclick = () => closeSheet();
   $('#pf-pin').oninput = () => { $('#pf-pin').value = $('#pf-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
   $('#pf-go').onclick = e => busy(e.currentTarget, async () => { const pin = $('#pf-pin').value; if (!/^[0-9]{4}$/.test(pin)) return toast('暗証番号は数字4つです'); await onsubmit(pin); });
+}
+// ---- メールの鍵(v58・受け付け 版48・艦長 msg 8847)----
+// 「鍵を作る」: 受け付けが鍵を作った時の返事にだけ控えが入る。控えはこの画面に1回だけ出し、閉じたら画面からも消す(端末には保存しない・記録や不具合の知らせにも入れない)
+async function emailKeySetup(remake) {
+  const r = await adminApi('adminSetupEmailKeys', remake ? { remake: true } : {});
+  if (!r.ok) return toast(errText(r.error), 9000);
+  if (r.made && r.backup) return showKeyBackup(r.backup, remake);
+  const msg = `鍵はあります(確かめました${r.checked ? `: 移した ${r.checked} 人のメールを戻せました` : ''})。控えはもう表示されません。`;
+  if (!r.canRemake) return toast(msg, 7000);
+  if (confirm(msg + '\n\nまだ鍵でしまったメールが無いので、鍵を作り直して控えを出し直せます。控えを保存できなかった時だけ使ってください。作り直しますか?')) return emailKeySetup(true);
+}
+function showKeyBackup(text, remade) {
+  showSheet(`<div class="sheethead"><b>メールの鍵を${remade ? '作り直しました' : '作りました'}</b></div>
+  <div class="sheetbody"><div class="warn">下の鍵の控えを、パスワード管理に保存してください。<b>もう表示されません</b>(この画面を閉じると消えます)。</div>
+  <div class="card"><p class="note">鍵が消えた時は、この控えをスクリプト プロパティに入れ直すと戻ります(説明書の管理者の節)。人に送らないでください。</p>
+    <pre id="ek-text" class="urlbox" style="white-space:pre-wrap;margin:0"></pre>
+    <button type="button" id="ek-copy" class="wide">コピーする</button><p id="ek-msg" class="note" aria-live="polite"></p>
+    <button type="button" id="ek-close" class="primary">保存しました(閉じると消えます)</button></div></div>`);
+  $('#ek-text').textContent = text;
+  $('#ek-copy').onclick = async () => { try { await navigator.clipboard.writeText(text); $('#ek-msg').textContent = 'コピーしました。パスワード管理に貼って保存し、貼った後はほかの所に残さないでください。'; } catch { $('#ek-msg').textContent = 'コピーできませんでした。上の文字を長押しして選んで写してください。'; } };
+  $('#ek-close').onclick = () => { if (!confirm('閉じると、この鍵の控えは二度と表示されません。パスワード管理に保存しましたか?')) return; $('#ek-text').textContent = ''; text = ''; closeSheet(); renderAdmin(); };
 }
 // カードを作った直後の画面: QR(端末の中で作る)・印刷・NFC タグに書き込む(Android の Chrome)・URL をコピー。合言葉が出るのはこの画面の1回だけ
 const cardUrl = secret => `${location.origin}${location.pathname}#card=${secret}`;
