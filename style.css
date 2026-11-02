@@ -263,6 +263,8 @@ main,.card,.note,.relogin,#sendmsg,.toast{overflow-wrap:break-word}
 .center{text-align:center}
 .gbar .whobar select{display:block}
 .joinnote{margin:8px 0}
+/* 2026-11-02 v57: 利用の申し込み(ログインの前の画面・登録されていない時) */
+.applybox{border:1px solid #2f6f4f;border-radius:10px;background:#f3f8f5;padding:8px 10px;margin:10px 0}.applybox h4{margin:0 0 4px;color:#1d4b34}.applybox ul{margin:4px 0;padding-left:1.3em}.applywho{overflow-wrap:anywhere;font-weight:bold;color:#222}
 /* 管理の画面のグループ(2026-10-28 その3) */
 .agms{margin:8px 0}.agm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;padding:6px 0;border-top:1px solid #e5e5e5}.agmn{font-weight:bold;overflow-wrap:anywhere}.agmn .mark{margin-left:6px}.agroup .gconfirm{margin:8px 0}
 /* 20261029 group-relogin: グループの画面で Google のボタンの箱を出した時の下の余白(箱を上の帯のすぐ下まで動かせるように) */

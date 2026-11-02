@@ -86,7 +86,7 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const APP_VER = 'cat-survey-v56';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v57';   // sw.js のキャッシュの名前と同じにする
 const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
@@ -267,8 +267,33 @@ const loggedIn = () => tokenValid() && !auth.pending && wasVerified(auth);   // 
 // 受け付けが「この人は使えない」と答えた時(登録されていない・止められた・カードが使えない)。ログインの印を消し、入力・一覧などの画面を出さない
 const DENY = ['not_registered', 'stopped', 'email_not_verified', 'pass_invalid', 'card_stopped', 'card_not_found'];
 let blocked = null;   // 使えない理由(画面に出す)。ログインしていない時の画面は、理由が無くても同じ(locked)
-const DENY_TEXT = { not_registered: 'このアカウントは登録されていません。管理者に登録を頼んでください。', stopped: 'このアカウントは止められています。管理者に連絡してください。',
+const DENY_TEXT = { not_registered: 'この Google アカウントは、まだ登録されていません。下の「利用の申し込み」から申し込んでください。', stopped: 'このアカウントは止められています。下の「問い合わせ」から連絡してください。',
   unverified: '電波がなくて、登録を確かめられませんでした。電波のある所で、もう一度ログインしてください。' };
+// 2026-11-02 v57(艦長 msg 8730): 新しい人の利用の申し込み(公式 LINE・メール)。登録されていない人には、ログインしようとしたアドレスを本人の画面にだけ出す。
+// blockedEmail は覚えるだけで端末に保存しない(開き直すと消える)。止められた人は申し込みではなく問い合わせへ
+const APPLY_TO = 'support@ikezos.com';
+let blockedEmail = '';
+function applyMail(kind, email) {
+  const who = 'Google のメールアドレス: ' + (email || '(ここに書いてください)');
+  const sub = kind === 'contact' ? 'まちねこ帳 問い合わせ' : 'まちねこ帳 利用の申し込み';
+  const lines = kind === 'contact' ? ['まちねこ帳について問い合わせます。', '', 'ログインに使った ' + who, '', '問い合わせの内容:', '', '', '※猫の居場所・写真・住所は書かないでください。']
+    : ['まちねこ帳の利用を申し込みます。', '', 'ログインに使う ' + who, '呼び名(本名でなくてかまいません): ', '', '※猫の居場所・写真・住所は書かないでください。'];
+  return `mailto:${APPLY_TO}?subject=${encodeURIComponent(sub)}&body=${encodeURIComponent(lines.join('\r\n'))}`;   // 改行は CRLF(mailto の決まり)。encodeURIComponent は空白を %20 にする(+ にしない)
+}
+function renderApply() {
+  const box = document.getElementById('applyblock'), gen = document.getElementById('applybox'); if (!box || !gen) return;   // 前の版の画面(枠が無い)の時は何もしない
+  const mode = blocked === 'not_registered' ? 'apply' : blocked === 'stopped' ? 'contact' : '', apply = mode === 'apply';
+  $('#apply-mail').href = applyMail('apply', '');
+  gen.classList.toggle('hidden', !!mode);   // 断られた時は、下の一般の枠ではなく、理由のすぐ下に出す(同じ案内を2つ出さない)
+  box.classList.toggle('hidden', !mode); if (!mode) return;
+  $('#applyb-h').textContent = apply ? '利用の申し込み' : '問い合わせ';
+  const who = $('#applyb-who'); who.textContent = blockedEmail ? `ログインしようとしたアカウント: ${blockedEmail}` : ''; who.classList.toggle('hidden', !blockedEmail);
+  $('#applyb-ask').textContent = apply ? (blockedEmail ? 'このアドレスを書いて、公式 LINE かメールで申し込んでください。呼び名(本名でなくてかまいません)も添えてください。' : 'ログインに使う Google のメールアドレスと、呼び名(本名でなくてかまいません)を書いて、公式 LINE かメールで申し込んでください。')
+    : 'また使いたい時や、分からない事は、LINE かメールで問い合わせてください。';
+  $('#applyb-line').textContent = apply ? '公式 LINE で申し込む' : 'LINE で問い合わせる';
+  $('#applyb-mail').textContent = (apply ? 'メールで申し込む' : 'メールで問い合わせる') + `(${APPLY_TO})`;
+  $('#applyb-mail').href = applyMail(mode, blockedEmail);
+}
 const whoLabel = () => !auth ? '' : isCard() ? `${auth.name || 'カードの人'}(カード)` : (auth.email || 'ログイン済み');
 const configured = () => !!(CONF.GAS_URL && CONF.GOOGLE_CLIENT_ID);
 function decodeJwt(tok) {
@@ -282,13 +307,13 @@ window.onGoogleCredential = async resp => {
   // 受け付けで確かめる(whoami)まで、ログインした形にしない(pending)。確かめる前の状態は端末に保存しない
   const prev = auth && !isCard() && auth.email === (p.email || '') && wasVerified(auth) ? auth : null;   // 同じ人が前に確かめを通っていれば、電波が無くても使える
   const mine = { type: 'google', idToken: resp.credential, exp: Number(p.exp), email: p.email || '', recorderId: prev && prev.recorderId || null, verified: !!prev, admin: prev && prev.admin, viewAll: prev && prev.viewAll, pass: prev && prev.pass || '', passExp: prev && prev.passExp || 0, pending: true };
-  auth = mine; blocked = null; renderAuth();
+  auth = mine; blocked = null; blockedEmail = ''; renderAuth();
   const r = await api('whoami');
   if (auth !== mine) return;   // 使えない人と分かって、もう取り消された(または別のログインに替わった)
   delete mine.pending;
   if (r.ok) { auth.recorderId = r.recorderId; auth.verified = true; applyMeta(r); saveAuth(); renderAuth(); toast('ログインしました'); await syncQuiet(); }
   else if (noAnswer(r.error) && mine.verified) { saveAuth(); renderAuth(); toast('サーバーにつながりません。前に確かめた登録で使えます。送る時にもう一度確かめます', 6000); }   // 前に確かめが通った人だけ、電波が無くても使える
-  else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
+  else { auth = null; saveAuth(); const off = noAnswer(r.error); blocked = off ? 'unverified' : r.error; blockedEmail = off ? '' : mine.email; renderAuth(); toast(off ? DENY_TEXT.unverified : errText(r.error), 6000); }   // 一度も確かめが通っていない人は、確かめが取れるまで使えない
 };
 // ---- Google でもう一度確かめる(20261027-2326。利用者の声「もう一度ログインと出るが、どこからログインするのか不明」)----
 // 通行証でログインしたまま ID トークン(約1時間)が切れた人が「全員の記録」「管理」を開いた時、その場に Google のボタンを出す。
@@ -353,12 +378,13 @@ function quietRefresh() {
   try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ }
 }
 function denyAccess(err) {
+  blockedEmail = auth && !isCard() ? auth.email || '' : '';   // 申し込み・問い合わせの画面に出すため(保存しない)
   auth = null; homeSrv = null; gReset(); saveAuth(); blocked = err; reauth = null; setScope('mine', true); closeSheet();
   try { google.accounts.id.disableAutoSelect(); } catch { /* 部品が無い時 */ }
   renderAuth(); toast(errText(err), 7000);
 }
 // 利用のきまりの更新の知らせ(v47): ログインしている時に出し、「わかった」で端末に覚える。v50 から新しい人にも1回出す(試用版の注意を見てもらうため)
-const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
+const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102b';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
     const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
@@ -411,7 +437,7 @@ function openCardPin() {
       if (r.error === 'card_stopped') { cardSecret = null; return msg(r.locked ? '5回まちがえたので、このカードは止まりました。管理者に連絡して、番号を戻してもらってください' : errText('card_stopped')); }
       return msg(errText(r.error));
     }
-    cardSecret = null; blocked = null;
+    cardSecret = null; blocked = null; blockedEmail = '';
     auth = { type: 'card', verified: true, pass: r.pass, passExp: Number(r.passExp), name: r.name || '', recorderId: r.recorderId || null };
     saveAuth(); closeSheet(); renderAuth(); toast(`ようこそ、${auth.name || 'カードの人'}。ログインしました`, 4000);
     const w = await api('whoami'); if (w.ok) { auth.recorderId = w.recorderId; applyMeta(w); saveAuth(); renderAuth(); }
@@ -497,7 +523,7 @@ function renderAuth() {
     : gsiState === 'loading' ? 'ログインの部品を読み込んでいます…' : (auth && auth.idToken ? 'ログインの期限が切れています。もう一度ログインしてください。' : '');
   $('#authinfo').textContent = on ? (isCard() ? `ログイン中: ${auth.name || 'カードの人'}(ログインカード)${idTail}。この端末にはログインの通行証だけが残り、カードの合言葉や暗証番号は残りません。記録には ID だけが残ります。全員の記録は、Google でログインした人だけが見られます。`
     : `ログイン中: ${auth.email || '(メール不明)'} ${idTail}。記録には ID だけが残り、メールアドレスや名前は送りません。${auth.admin ? '役割: 管理者(「管理」の画面で入力者の登録・カードの発行ができます。全員の記録も見られます)' : auth.viewAll ? '役割: 全体を見る(一覧・地図・集計で「全員の記録」に切り替えられます)' : ''}`) : 'ログインしていません。';
-  renderScopeBar(); renderJoinNote(); renderHomeGroup(); renderTerms(); renderMyName();
+  renderScopeBar(); renderJoinNote(); renderHomeGroup(); renderTerms(); renderMyName(); renderApply();
   $opt('#home-admin').classList.toggle('hidden', !(on && !isCard() && auth.admin));
   if (on && !wasLoggedIn) { wasLoggedIn = true; showTab(joinCode ? 'join' : 'home'); } else if (!on) wasLoggedIn = false;   // ログインできたら、ホームから始める
   if (!(on && auth.admin) && document.querySelector('.tab.active') && document.querySelector('.tab.active').id === 'tab-admin') showTab('record');
@@ -610,13 +636,13 @@ const WEAK_TEXT = '電波が弱いようです。つながったら自動で送�
 const sendErrText = e => NET_ERR.includes(e) ? WEAK_TEXT + '(記録はこの端末に残っています)' : SRV_ERR.includes(e) ? SRV_TEXT + '(記録はこの端末に残っています)' : errText(e);
 const ERR_TEXT = {
   not_configured: '送り先の設定がまだです(公開の時に入ります)。入るまでは、ログインできません。', not_logged_in: 'Google でログインするか、ログインカードをかざして(QR を読んで)ください。',
-  stopped: 'このアカウントは止められています。管理者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
+  stopped: 'このアカウントは止められています。ログインの画面の「問い合わせ」から連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
   card_stopped: 'このカードは止まっています。管理者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。管理者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
   role_pin_required: '4桁のパスワードを入れてください。', role_pin_unset: '役割の4桁のパスワードがまだ決まっていません。管理の画面で決めてください。', role_pin_form: 'パスワードは数字4つです。', role_pin_mismatch: '2回の入力が合っていません。', role_pin_wrong: 'パスワードが違います。', role_pin_locked: '間違いが続いたので、15分止まっています。',
   not_stopped: '使っている人は削除できません。先に「止める」を押してください。', delete_self: '自分は削除できません。', group_leader: 'この人はグループのリーダーです。先に「グループ」の欄でリーダーを替えるか、グループを消してください。',
   bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前は20字までで入れてください。', name_long: '呼び名は12字までです。', name_contact: '呼び名にメールアドレスや電話番号は入れられません。', name_form: '呼び名に使えない形です(改行や見えない文字、=・+・- で始まる形)。', memo_long: 'メモは60字までです。', memo_form: 'メモに使えない形です(改行や見えない文字、=・+・- で始まる形)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
-  network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
+  network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。ログインの画面の「利用の申し込み」から申し込んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
   server_not_configured: 'サーバー側の設定がまだです(管理者へ連絡してください)。', email_not_verified: 'この Google アカウントは使えません(メールが確認されていません)。',
   busy: 'サーバーが混んでいます。少し待ってもう一度送ってください。',

@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v56">
+<meta name="app-ver" content="cat-survey-v57">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=56">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=56">
-<link rel="stylesheet" href="style.css?v=56">
+<link rel="stylesheet" href="lib/leaflet.css?v=57">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=57">
+<link rel="stylesheet" href="style.css?v=57">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -53,7 +53,7 @@ setTimeout(function () {
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="updmsg" class="updmsg hidden" role="status"><p>新しい版があります。</p><button type="button" id="btn-update" class="small">更新</button></div>
-  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 退会すると、猫の記録は名前を外して残ります(調査の数には含めません)。</p><p>問い合わせの窓口は LINE の「ikezosアプリ問い合わせ」です。現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
+  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 退会すると、猫の記録は名前を外して残ります(調査の数には含めません)。また、利用の申し込みで受け取る情報の扱いを加えました。</p><p>問い合わせの窓口は LINE の「ikezosアプリ問い合わせ」です。現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -89,11 +89,29 @@ setTimeout(function () {
   <div id="logincard" class="card login">
     <h3>Google でログイン</h3>
     <p id="blockmsg" class="warn block hidden" role="alert"></p>
+    <!-- 2026-11-02 v57(艦長 msg 8730): 登録されていない人には申し込み、止められた人には問い合わせの道(中身は app.js の renderApply) -->
+    <div id="applyblock" class="applybox hidden" role="status">
+      <h4 id="applyb-h"></h4>
+      <p id="applyb-who" class="note applywho hidden"></p>
+      <p id="applyb-ask" class="note"></p>
+      <a class="linkbtn" id="applyb-line" href="https://lin.ee/600DoZ1" target="_blank" rel="noopener noreferrer"></a>
+      <a class="linkbtn" id="applyb-mail" href="mailto:support@ikezos.com"></a>
+      <p class="note">LINE でお問い合わせいただいた内容は、LINE ヤフー株式会社のサービス上に保存されます。猫の居場所・人の名前・写真など、個人を特定できる情報は送らないでください。</p>
+    </div>
     <p id="blockpending" class="note hidden"></p>
-    <p class="note">登録された方だけが使えます。管理者が登録した Google アカウントでログインしてください。</p>
+    <p class="note">登録された方だけが使えます。管理者が登録した Google アカウントでログインしてください。はじめての方は、下の「利用の申し込み」をご覧ください。</p>
     <div id="gsi-btn"></div>
     <button type="button" id="btn-regsi" class="small hidden">Google のボタンを出し直す</button>
     <p id="loginmsg" class="note"></p>
+    <div id="applybox" class="applybox">
+      <h4>はじめての方へ: 利用の申し込み</h4>
+      <p class="note">使うには、管理者の登録が要ります。公式 LINE かメールで、次の2つを送ってください。</p>
+      <ul class="note"><li>ログインに使う Google のメールアドレス</li><li>呼び名(本名でなくてかまいません)</li></ul>
+      <a class="linkbtn" id="apply-line" href="https://lin.ee/600DoZ1" target="_blank" rel="noopener noreferrer">公式 LINE で申し込む</a>
+      <a class="linkbtn" id="apply-mail" href="mailto:support@ikezos.com">メールで申し込む(support@ikezos.com)</a>
+      <p class="note">猫の居場所・写真・住所は送らないでください。</p>
+      <p class="note">LINE でお問い合わせいただいた内容は、LINE ヤフー株式会社のサービス上に保存されます。猫の居場所・人の名前・写真など、個人を特定できる情報は送らないでください。</p>
+    </div>
     <p id="joinnote" class="warn joinnote hidden" role="status">グループの参加用リンクを開きました。ログインすると、参加の申し込みに進みます。</p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
     <p id="terms-login" class="note">集めた記録は、個人や細かい場所が分からない形にまとめたうえで、行政への提言や研究に使うことがあります。まとめる単位は、区や、約500m四方の区画ごとの頭数などです。</p>
@@ -248,12 +266,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=56"></script>
-<script src="lib/leaflet.markercluster.js?v=56"></script>
-<script src="lib/qr.js?v=56"></script>
-<script src="lib/jsQR.js?v=56"></script>
-<script src="scan.js?v=56"></script>
-<script src="config.js?v=56"></script>
-<script src="app.js?v=56"></script>
+<script src="lib/leaflet.js?v=57"></script>
+<script src="lib/leaflet.markercluster.js?v=57"></script>
+<script src="lib/qr.js?v=57"></script>
+<script src="lib/jsQR.js?v=57"></script>
+<script src="scan.js?v=57"></script>
+<script src="config.js?v=57"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
