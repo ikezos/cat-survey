@@ -86,7 +86,7 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const APP_VER = 'cat-survey-v51';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v56';   // sw.js のキャッシュの名前と同じにする
 const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
@@ -256,6 +256,9 @@ const isCard = () => !!(auth && auth.type === 'card');
 const idValid = () => !!(auth && !isCard() && auth.idToken && auth.exp * 1000 > Date.now() + 30000);
 const passValid = () => !!(auth && auth.pass && auth.passExp > Date.now());
 const tokenValid = () => !!(auth && (isCard() ? passValid() : idValid() || passValid()));
+// 2026-11-02 v54(艦長 msg 8588): 管理者・全体を見る人は、最初の Google ログインの後は通行証で動く(役割は受け付けが操作のたびにシートで確かめる)。
+// passRoles=false は、受け付けが「通行証では役割を付けない」前の版だと分かった時(戻した時)。その時だけ前と同じく ID トークンを求める
+const passRole = () => !!(auth && !isCard() && passValid() && auth.viewAll && auth.passRoles !== false);
 // verified=受け付けが登録を確かめて通した印。これが無い人(確かめが通っていない・電波が無くて確かめられなかった人)は、使えない。
 // 前の版で確かめが通った人(入力者IDを持つ)・カードの人(カードのログインは受け付けが通した時だけ作られる)は、印が無くても確かめが通った扱い。
 const wasVerified = a => !!(a && (a.verified || a.recorderId || a.type === 'card'));
@@ -329,7 +332,7 @@ function renderRelogin() {
   if (box) { box.classList.toggle('hidden', !(g && reauth === 'all' && auth.viewAll && !idValid() && tab && RELOGIN_TABS.includes(tab.id))); gsiSpot(box); }
   const set = $opt('#reloginset');
   if (set) {
-    set.classList.toggle('hidden', !g);
+    set.classList.toggle('hidden', !g || passRole());
     const st = $opt('#reloginstate');
     if (st) st.textContent = !g || !auth.viewAll ? '' : idValid() ? `全員の記録・管理の確かめ: 済み(あと約${Math.max(1, Math.round((auth.exp * 1000 - Date.now()) / 60000))}分)` : '全員の記録・管理の確かめ: 期限が切れています(下のボタンで確かめ直せます。ログアウトはしません)';
     gsiSpot(set);
@@ -344,7 +347,7 @@ function renderRelogin() {
 function quietRefresh() {
   if (!(loggedIn() && !isCard() && gsiState === 'ready' && navigator.onLine && document.visibilityState === 'visible')) return;
   const tab = document.querySelector('.tab.active'), lead = !!(tab && tab.id === 'tab-group' && auth.group && auth.group.leader);
-  if (!((auth.viewAll && (scope === 'all' || (tab && tab.id === 'tab-admin'))) || lead)) return;
+  if (passRole() || !((auth.viewAll && (scope === 'all' || (tab && tab.id === 'tab-admin'))) || lead)) return;   // v54: 役割のある人は通行証で動くので、Google の画面を出さない
   if (auth.exp * 1000 > Date.now() + 5 * 60000 || Date.now() - quietPromptAt < 30 * 60000) return;
   quietPromptAt = Date.now();
   try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ }
@@ -355,7 +358,7 @@ function denyAccess(err) {
   renderAuth(); toast(errText(err), 7000);
 }
 // 利用のきまりの更新の知らせ(v47): ログインしている時に出し、「わかった」で端末に覚える。v50 から新しい人にも1回出す(試用版の注意を見てもらうため)
-const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261101b';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
+const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
     const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
@@ -518,7 +521,7 @@ function applyMeta(r) {
   if (!r || !r.ok) return;
   takeHomeCounts(r);
   if ('group' in r) takeGroup(r.group);   // 2026-10-28 グループ(古い受け付けは group を返さない=何も変えない)
-  if (r.viaPass && auth && !isCard()) r = { ...r, viewAll: auth.viewAll, admin: auth.admin };   // 通行証で通った返事は役割を返さない(前の ID トークンで分かった役割を消さない)
+  if (r.viaPass && auth && !isCard()) { if (auth.passRoles !== !!r.passRoles) { auth.passRoles = !!r.passRoles; saveAuth(); } if (!r.passRoles) r = { ...r, viewAll: auth.viewAll, admin: auth.admin }; }   // 前の版の受け付けは、通行証で通った返事に役割を返さない(前の ID トークンで分かった役割を消さない)。今の版は外された役割もそのまま映す
   if (auth && auth.viewAll !== !!r.viewAll) { auth.viewAll = !!r.viewAll; saveAuth(); if (!auth.viewAll && scope === 'all') setScope('mine', true); renderScopeBar(); }
   if (auth && (auth.admin !== !!r.admin || (r.name != null && isCard() && auth.name !== r.name))) { auth.admin = !!r.admin; if (isCard() && r.name != null) auth.name = r.name; saveAuth(); renderAuth(); }
   if (auth && !isCard() && r.myName != null && auth.myName !== r.myName) { auth.myName = r.myName; saveAuth(); renderMyName(); }   // 呼び名(2026-10-31 v49。カードの人は auth.name)
@@ -573,9 +576,9 @@ async function rawApi(body) {
 async function api(action, extra = {}, ms) {
   if (!configured()) return { ok: false, error: 'not_configured' };
   if (!tokenValid()) return { ok: false, error: 'not_logged_in' };
-  // 全員の記録・管理の操作は、Google の新しい ID トークンが要る(通行証だけでは通さない)
+  // 全員の記録・管理の操作は、役割のある人(passRole)は通行証で通る。役割の無い Google の人は前のまま ID トークンの確かめへ案内する
   const needId = /^admin[A-Z]/.test(action) || (action === 'list' && extra.scope === 'all') || (action === 'photo' && (extra.items || []).some(i => i.ownerId) && !(isCard() && gActive()));   // 他の人の記録の写真も、全員の記録と同じ(カードの人のグループの写真は通行証で。受け付けがグループの記録だけ渡す。2026-10-29)
-  if (needId && !idValid()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? (/^admin/.test(action) ? 'not_allowed' : 'card_no_all') : 'id_needed' }; }   // カードの人: 全員の記録・他の人の写真は「Google でログインした人だけ」の案内
+  if (needId && !idValid() && !passRole()) { if (!isCard()) { try { google.accounts.id.prompt(); } catch { /* 部品が無い時 */ } } return { ok: false, error: isCard() ? (/^admin/.test(action) ? 'not_allowed' : 'card_no_all') : 'id_needed' }; }   // カードの人: 全員の記録・他の人の写真は「Google でログインした人だけ」の案内
   // カードの人は通行証。Google の人は ID トークンが期限内ならそれ(通行証をまだ持っていなければ whoami で受け取る)、切れていれば通行証
   const cred = isCard() || !idValid() ? { pass: auth.pass } : { idToken: auth.idToken, ...(action === 'whoami' && !(auth.pass && auth.passExp > Date.now() + 7 * 864e5) ? { wantPass: true } : {}) };
   const viaPass = !!cred.pass;
@@ -585,7 +588,7 @@ async function api(action, extra = {}, ms) {
   if (r && !isCard() && viaPass && r.error === 'pass_invalid') { auth.pass = ''; auth.passExp = 0; saveAuth(); renderAuth(); return r; }   // Google の人の通行証が使えない(期限切れ・登録から外された)→ 通行証を捨て、Google でログインし直してもらう
   if (r && !isCard() && ['token_expired', 'invalid_token', 'wrong_audience', 'wrong_issuer', 'bad_token'].includes(r.error)) { auth.idToken = ''; delete auth.pending; saveAuth(); renderAuth(); }
   if (r && DENY.includes(r.error) && auth) denyAccess(r.error);
-  if (r && !r.ok && !/^bug|^adminBug/.test(action) && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`サーバーの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
+  if (r && !r.ok && !/^bug|^adminBug/.test(action) && !/^role_pin_/.test(r.error || '') && !['network', 'timeout', 'not_logged_in', 'id_needed', 'already_done'].includes(r.error)) logErr(`サーバーの断り: ${action} ${r.error || ''}`);   // 自動の誤りの記録(0607)   // 登録されていない・止められた・カードが使えなくなった → ログアウトの形にして、はっきり知らせる
   return r || { ok: false, error: 'bad_response' };
 }
 // list(2026-10-29 speed-2b): 前の答えの ver を添えて送り、受け付けが「前と同じ」(unchanged)と返したら、覚えていた答えをそのまま使う。
@@ -610,6 +613,8 @@ const ERR_TEXT = {
   stopped: 'このアカウントは止められています。管理者に連絡してください。', pass_invalid: 'このカードのログインは使えなくなりました(番号を戻した・期限切れなど)。もう一度カードをかざして(QR を読んで)、暗証番号を入れてください。',
   card_stopped: 'このカードは止まっています。管理者に連絡してください。', card_not_found: 'このカードは登録されていません(作り直された・止められたカードかもしれません)。管理者に連絡してください。',
   wrong_pin: '暗証番号が違います。', bad_pin: '暗証番号は数字4つです。', last_admin: '最後の管理者は外せません(先にほかの人を管理者にしてください)。', duplicate: 'そのメールアドレスは、もう登録されています。',
+  role_pin_required: '4桁のパスワードを入れてください。', role_pin_unset: '役割の4桁のパスワードがまだ決まっていません。管理の画面で決めてください。', role_pin_form: 'パスワードは数字4つです。', role_pin_mismatch: '2回の入力が合っていません。', role_pin_wrong: 'パスワードが違います。', role_pin_locked: '間違いが続いたので、15分止まっています。',
+  not_stopped: '使っている人は削除できません。先に「止める」を押してください。', delete_self: '自分は削除できません。', group_leader: 'この人はグループのリーダーです。先に「グループ」の欄でリーダーを替えるか、グループを消してください。',
   bad_confirm: '「消す」と打ってください。', bad_email: 'メールアドレスの形が違います。', bad_role: 'その役割は選べません。', bad_name: '名前は20字までで入れてください。', name_long: '呼び名は12字までです。', name_contact: '呼び名にメールアドレスや電話番号は入れられません。', name_form: '呼び名に使えない形です(改行や見えない文字、=・+・- で始まる形)。', memo_long: 'メモは60字までです。', memo_form: 'メモに使えない形です(改行や見えない文字、=・+・- で始まる形)。', card_no_role: 'カードの人には役割を付けられません(全体を見るのは Google の人だけ)。',
   network: WEAK_TEXT_TRY, http_error: SRV_TEXT, stalled: SRV_TEXT, no_cors: SRV_TEXT, bad_response: SRV_TEXT, server_error: SRV_TEXT, bad_json: SRV_TEXT, not_registered: 'この Google アカウントは、まだ登録されていません。管理者に登録を頼んでください。',
   token_expired: 'ログインの期限が切れました。もう一度ログインしてください。', invalid_token: 'ログインをやり直してください。', wrong_audience: 'ログインをやり直してください。',
@@ -1156,7 +1161,7 @@ async function setScope(sc, quiet) {
   if (sc === 'all') {
     if (!(auth && auth.viewAll)) return;
     if (!navigator.onLine) return toast('電波がありません。「全員の記録」は電波がある所で見られます', 4000);
-    if (!quiet && idValid()) toast('全員の記録を取っています…', 2000);   // 確かめが要る時は、取りに行かずに案内の箱を出す
+    if (!quiet && (idValid() || passRole())) toast('全員の記録を取っています…', 2000);   // 確かめが要る時は、取りに行かずに案内の箱を出す
     const r = await listApi({ scope: 'all', ...(showDeleted && auth.admin ? { includeDeleted: true } : {}) });
     if (!r.ok) {
       if (r.error === 'not_allowed') { auth.viewAll = false; saveAuth(); }
@@ -1263,7 +1268,7 @@ function gConfirmHtml() {
 // 押した所に Google のボタンの箱を出す(管理の画面と同じ形)。受け付けから need_login が返った時も同じ。確かめが済んだら(reconfirm の 'group')、押した操作をそのまま続ける。
 // gNeed: 確かめを待っている操作 { action, extra, where(箱を出す所), id }。カードの人は対象にしない(作れない案内のまま・リーダーにもならない)
 const G_NEED_ID = ['groupCreate', 'groupApprove', 'groupDecline', 'groupRemove', 'groupNewCode'], G_WHERE = { groupCreate: 'create', groupNewCode: 'code', groupApprove: 'req', groupDecline: 'req', groupRemove: 'mem', groupJoin: 'join' };
-const groupNeedId = action => !!auth && !isCard() && G_NEED_ID.includes(action);
+const groupNeedId = action => !!auth && !isCard() && !passRole() && G_NEED_ID.includes(action);
 const gReloginHtml = () => '<div class="card relogin" id="relogin-group" role="status"><p><b>この操作は、Google でもう一度確かめてから使えます。</b></p><p class="note">下のボタンを押してください。ログアウトはしません。確かめが済むと、押した操作をそのまま続けます(この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>';
 const GNEED_PAD = '<div class="gneed-pad" aria-hidden="true"></div>';   // 箱が下の知らせに隠れないよう、下に余白(画面が短くて上へ動かせない時のため)
 const gBox = (where, id) => gNeed && gNeed.where === where && (id == null || gNeed.id === id) ? gReloginHtml() : '';
@@ -1890,8 +1895,8 @@ async function openDetail(id) {
   }
   const ops = opsOf(r), pendingChanges = ops.filter(o => o.type === 'change'), pendingEdits = ops.filter(o => o.type === 'edit').length;
   const chItems = (items, wait) => items.map(i => `<div class="chg-line">${esc(i.label)}: ${esc(i.from || '(未入力)')} → <b>${esc(i.to || '(なし)')}</b>${wait ? ' <span class="st">(送信待ち)</span>' : ''}</div>`).join('');
-  const hist = [...(r.changes || []).map(e => `<div class="chg"><div class="note">${fmtShort(e.time)}</div>${chItems(e.items, false)}</div>`),
-    ...pendingChanges.map(o => `<div class="chg"><div class="note">${fmtShort(o.time)}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'hairLen' ? '毛の長さ' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(戻ってきた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
+  const hist = [...(r.changes || []).map(e => `<div class="chg"><div class="note">${esc(fmtShort(e.time))}</div>${chItems(e.items, false)}</div>`),   // v55: fmtShort は読めない時に元の文を返すので、ここも esc を通す(iPhone の Safari は読めず、そのまま画面に入っていた)
+    ...pendingChanges.map(o => `<div class="chg"><div class="note">${esc(fmtShort(o.time))}</div>${Object.entries(o.changes).map(([k, v]) => `<div class="chg-line">${esc(k === 'pet' ? '飼い猫の可能性' : k === 'neuter' ? '不妊手術' : k === 'hairLen' ? '毛の長さ' : k === 'gone' ? 'いる/いない' : LABELS[k] || k)} → <b>${esc(k === 'siteId' ? (siteNameOf(v, sm) || '(なし)') : k === 'gone' ? (v === 'いる' ? 'いる(戻ってきた)' : goneText({ goneAt: o.goneDate, goneReason: o.goneReason === 'その他' && o.goneOther ? 'その他:' + o.goneOther : o.goneReason })) : v)}</b> <span class="st">(送信待ち)</span></div>`).join('')}</div>`)];
   const own = mine(r), unsent = r.status !== 'sent', admin = !!(auth && auth.admin && !isCard()), si = sightInfo(r);
   showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>記録の詳しい内容</b></div>
   <div class="sheetbody">
@@ -2258,14 +2263,15 @@ async function renderAdmin() {
       <div class="ptop"><b class="pname">${title}</b><span class="mark ${x.type === 'card' ? 'chg' : 'edit'}">${x.type === 'card' ? 'カード' : 'Google'}</span>${x.type === 'google' ? `<button type="button" class="tiny" data-act="peek">${adminShow.has(x.key) ? '隠す' : 'メールを見る'}</button>` : ''}</div>
       ${x.type === 'google' && x.name ? `<div class="note pmail">${mail}</div>` : ''}
       <div class="note">${x.type === 'card' ? `番号を間違えた回数: ${x.fails}${x.roleIgnored ? '・シートの役割は無視されます' : ''}` : `役割: <select class="rolesel" data-act="role" aria-label="役割">${ROLE_OPTIONS(x.role)}</select>`}
-      <br>状態: <b>${x.stopped ? esc('止めた' + (x.state && x.state !== '止めた' ? '(' + x.state + ')' : '')) : '使える'}</b>・最後に使った: ${esc(last)}${x.recorderId ? `・ID ${esc(String(x.recorderId).slice(0, 6))}` : ''}</div>
+      <br>状態: <b>${x.stopped ? esc('止めた' + (x.state && x.state !== '止めた' ? '(' + x.state + ')' : '')) : '使える'}</b>・最後に使った: ${esc(last)}${x.recorderId ? `・ID ${esc(String(x.recorderId).slice(0, 6))}` : ''}${x.addedBy == null ? '' : `<br>追加した人: ${x.addedBy ? esc(x.addedBy) + (x.addedAt ? `・${esc(fmtShort(x.addedAt))}` : '') : '記録なし'}`}</div>
       <label class="fl">管理者のメモ<input class="ad-memo" type="text" maxlength="60" autocomplete="off" placeholder="例: 渡した相手など" value="${esc(x.memo || '')}"></label>
       <p class="note">このメモは管理者だけが見られます。</p>
-      <div class="row"><button type="button" class="small" data-act="savememo">メモを保存</button>${x.name ? '<button type="button" class="small" data-act="clearname">呼び名を消す</button>' : ''}<button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}</div></div>`; };
+      <div class="row"><button type="button" class="small" data-act="savememo">メモを保存</button>${x.name ? '<button type="button" class="small" data-act="clearname">呼び名を消す</button>' : ''}<button type="button" class="small" data-act="${x.stopped ? 'restore' : 'stop'}">${x.stopped ? 'また使う' : '止める'}</button>${x.type === 'card' ? `<button type="button" class="small" data-act="resetpin">番号を戻す</button><button type="button" class="small" data-act="reissue">カードを作り直す</button>` : ''}${x.stopped ? '<button type="button" class="small danger" data-act="delete">一覧から削除</button>' : ''}</div></div>`; };
   box.innerHTML = `<div class="card"><h3>Google の人を登録</h3><p class="note">Google アカウントで入力する人。メールアドレスと役割を入れます(メールはこの画面でも伏字で出ます)。呼び名は本人が決めます。</p>
       <label class="fl">メールアドレス<input id="ad-email" type="email" inputmode="email" autocomplete="off" placeholder="例: taro@example.com"></label>
       <label class="fl">役割<select id="ad-role" class="rolesel wide">${ROLE_OPTIONS('')}</select></label>
       <button type="button" id="ad-add" class="wide">この人を登録する</button></div>
+    <div id="ad-rolepin"></div>
     <div class="card"><h3>ログインカードを作る</h3><p class="note">Google のアカウントが無い人向け。その人に伝える暗証番号(数字4つ)を入れます。整理番号(ID)はカードごとに自動で付きます。合言葉は作った直後の画面に1回だけ出ます(サーバーにもシートにも残りません)。</p>
       <label class="fl">暗証番号(4けた)<input id="ad-pin" class="pin" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="例: 2580"></label>
       <label class="fl">管理者のメモ(なくてもよい)<input id="ad-card-memo" type="text" maxlength="60" autocomplete="off" placeholder="例: 渡した相手など"></label>
@@ -2276,7 +2282,7 @@ async function renderAdmin() {
       <label class="fl">人を選ぶ<select id="ad-pick" class="wide" aria-label="人を選ぶ"></select></label><p id="ad-found" class="note" aria-live="polite"></p></div>` : ''}
     <div id="ad-people">${people.map(person).join('') || '<p class="note">まだ誰も登録されていません</p>'}</div>
     <div id="ad-groups"></div>
-    <div class="card ad-notes"><p class="note">呼び名は本人が設定の画面で決めます。</p><p class="note">管理者は消すだけです。シートの名前の列も変えないでください。</p><p class="note">カードの人は、入力と自分の記録の直しができます。</p><p class="note">グループに入っていれば、グループの記録も見られます。</p><p class="note">カードの人に役割は付けられません。グループを作る・リーダーにはなれません。</p><p class="note">「止める」は記録を消しません。止めると、その人の端末のログインも使えなくなります。</p><p class="note">なくした時は「カードを作り直す」。前のカードは使えなくなり、記録はつながります。</p><p class="note">番号を忘れた・5回まちがえて止まった時は「番号を戻す」。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p></div>
+    <div class="card ad-notes"><p class="note">呼び名は本人が設定の画面で決めます。</p><p class="note">管理者は消すだけです。シートの名前の列も変えないでください。</p><p class="note">カードの人は、入力と自分の記録の直しができます。</p><p class="note">グループに入っていれば、グループの記録も見られます。</p><p class="note">カードの人に役割は付けられません。グループを作る・リーダーにはなれません。</p><p class="note">「全体を見る」「管理者」を付ける時は、4桁のパスワードが要ります。</p><p class="note">「止める」は記録を消しません。止めると、その人の端末のログインも使えなくなります。</p><p class="note">止めた人は「一覧から削除」で消せます。元に戻せません。</p><p class="note">削除すると、シートのその人の行も消えます。</p><p class="note">猫の記録は「退会者」に移り、一覧・地図・集計に出なくなります。</p><p class="note">なくした時は「カードを作り直す」。前のカードは使えなくなり、記録はつながります。</p><p class="note">番号を忘れた・5回まちがえて止まった時は「番号を戻す」。</p><p class="note">操作は、シートの「管理の記録」に残ります。</p><p class="note">「追加した人」は、その人を登録した管理者です。</p></div>
     <div class="card"><h3>不具合の知らせ</h3><p class="note">入力する人がアプリから送った不具合と、アプリが自分で気付いた誤り(自動)。中身と画面の写しは管理者だけが見られます。</p>
       <button type="button" id="ad-bugs" class="wide">不具合の知らせを開く</button></div>
     <div class="card wipecard"><h3>試しの記録をすべて消す</h3><p class="note">本番の調査を始める前に、試しに入れた猫の記録・変化・えさ場と写真を、全員の分まとめて消します。入力者・カード・設定・選択肢は残ります。<b>元には戻せません</b>(写真はドライブのごみ箱に30日残ります)。</p>
@@ -2284,7 +2290,86 @@ async function renderAdmin() {
   $('#ad-pin').oninput = () => { $('#ad-pin').value = $('#ad-pin').value.replace(/[^0-9]/g, '').slice(0, 4); };
   adminPeople = people;
   if ($('#ad-q')) { $('#ad-q').oninput = () => { adminFind.q = $('#ad-q').value; adminFilter(); }; $('#ad-pick').onchange = () => { adminFind.pick = $('#ad-pick').value; adminFilter(); }; adminFilter(); }
-  agConfirm = null; await loadAdminGroups();
+  agConfirm = null; await Promise.all([loadRolePin(), loadAdminGroups()]);
+}
+// ---- 役割の4桁のパスワード(2026-11-02 v52・艦長 msg 8579)。確かめるのは受け付け。画面は聞くだけで、4桁は覚えない(端末に保存しない)----
+const rolePinNeeded = (before, after) => after === '管理者' ? before !== '管理者' : after === '全体を見る' ? before === '' : false;   // 受け付けの rolePinNeeded と同じ決まり
+const rolePinLockText = until => `間違いが続いたので止まっています。${hhmm(until)} を過ぎるとまた使えます。`;
+async function loadRolePin() {
+  const box = document.querySelector('#ad-rolepin'); if (!box) return;
+  const r = await api('adminRolePinStatus');
+  if (!document.querySelector('#ad-rolepin')) return;
+  if (!r.ok) { box.innerHTML = ''; return; }   // 古い受け付けには無い(何も出さない)
+  box.innerHTML = `<div class="card"><h3>役割の4桁のパスワード</h3><p class="note">「全体を見る」「管理者」を付ける時に入れます。間違えて付けることを防ぐためのものです。管理者みんなで同じ4桁を使います。変えると全員の4桁が変わります。</p>
+    ${r.lockedUntil ? `<p class="warn" id="ad-rp-lock">${esc(rolePinLockText(r.lockedUntil))}</p>` : ''}
+    <button type="button" id="ad-rp-change" class="wide"${r.lockedUntil ? ' disabled' : ''}>${r.set ? '4桁のパスワードを変える' : '4桁のパスワードを決める'}</button></div>`;
+}
+const pinField = (id, label) => `<label class="fl">${esc(label)}<input id="${id}" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${esc(label)}"></label>`;
+const pinOnly = id => { const el = $('#' + id); el.oninput = () => { el.value = el.value.replace(/[^0-9]/g, '').slice(0, 4); }; };
+// 決める・変える。set = 今の4桁があるか。done(pin): 決まった後に続ける操作(無ければ管理の画面へ戻る)
+function openRolePinSet(set, done) {
+  showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>役割の4桁のパスワードを${set ? '変える' : '決める'}</b></div>
+  <div class="sheetbody"><div class="card pinbox"><p class="note">${set ? '今の4桁と、新しい4桁を2回入れてください。' : 'はじめに、数字4つを決めて2回入れてください。「全体を見る」「管理者」を付ける時に使います。管理者みんなで同じ4桁を使います。忘れないようにしてください。'}</p>
+  ${set ? pinField('rp-cur', '今の4桁') : ''}${pinField('rp-new', '新しい4桁')}${pinField('rp-new2', 'もう一度')}
+  <p id="rp-msg" class="warn hidden" aria-live="polite"></p>
+  <button type="button" id="rp-go" class="primary">この4桁にする</button><button type="button" id="rp-cancel" class="wide">やめる</button></div></div>`);
+  const msg = t => { $('#rp-msg').textContent = t; $('#rp-msg').classList.remove('hidden'); };
+  if (set) pinOnly('rp-cur'); pinOnly('rp-new'); pinOnly('rp-new2');
+  const cancel = () => { closeSheet(); if (done) done(null); };
+  $('#s-back').onclick = $('#rp-cancel').onclick = cancel;
+  $('#rp-go').onclick = e => busy(e.currentTarget, async () => {
+    const pin = $('#rp-new').value, pin2 = $('#rp-new2').value, current = set ? $('#rp-cur').value : '';
+    if (!/^[0-9]{4}$/.test(pin) || (set && !/^[0-9]{4}$/.test(current))) return msg('数字4つで入れてください。');
+    if (pin !== pin2) return msg('2回の入力が合っていません。');
+    const r = await adminApi('adminRolePinSet', { }, { pin, pin2, ...(set ? { current } : {}) });
+    if (r.ok) { closeSheet(); toast(set ? '4桁のパスワードを変えました' : '4桁のパスワードを決めました'); if (done) return done(pin); return renderAdmin(); }
+    if (r.error === 'role_pin_wrong') { $('#rp-cur').value = ''; return msg(`今の4桁が違います。あと${r.remaining}回で止まります。`); }
+    if (r.error === 'role_pin_locked') { closeSheet(); if (done) done(null); renderAdmin(); return toast(rolePinLockText(r.until), 7000); }
+    msg(errText(r.error));
+  });
+}
+// 4桁を聞いて op(4桁) を流す。返すのは受け付けの答え(やめた時・止まっている時は null)。未設定なら先に決める画面へ進む
+async function withRolePin({ title, note, op }) {
+  const st = await api('adminRolePinStatus');
+  if (st.error === 'unknown_action') return op('');   // 古い受け付け(4桁を知らない)。公開の順は受け付けが先なので、ふつうは通らない
+  if (!st.ok) { toast(errText(st.error), 5000); return null; }
+  if (st.lockedUntil) { toast(rolePinLockText(st.lockedUntil), 7000); return null; }
+  return new Promise(res => {
+    if (!st.set) return openRolePinSet(false, pin => res(pin ? op(pin) : null));
+    showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>${esc(title)}</b></div>
+    <div class="sheetbody"><div class="card pinbox"><p class="note">${esc(note)}</p>${pinField('rp-pin', '4桁のパスワード')}
+    <p id="rp-msg" class="warn hidden" aria-live="polite"></p>
+    <button type="button" id="rp-go" class="primary">この役割を付ける</button><button type="button" id="rp-cancel" class="wide">やめる</button></div></div>`);
+    pinOnly('rp-pin');
+    const msg = t => { $('#rp-msg').textContent = t; $('#rp-msg').classList.remove('hidden'); };
+    $('#s-back').onclick = $('#rp-cancel').onclick = () => { closeSheet(); res(null); };
+    $('#rp-go').onclick = e => busy(e.currentTarget, async () => {
+      const pin = $('#rp-pin').value; if (!/^[0-9]{4}$/.test(pin)) return msg('数字4つで入れてください。');
+      const r = await op(pin);
+      if (r.error === 'role_pin_wrong') { $('#rp-pin').value = ''; return msg(`パスワードが違います。あと${r.remaining}回で止まります。`); }
+      closeSheet();
+      if (r.error === 'role_pin_locked') { toast(rolePinLockText(r.until), 7000); renderAdmin(); return res(null); }
+      res(r);
+    });
+  });
+}
+// 止めた人の削除(2段の確かめ)。1段目で移る数を見せ、2段目で「元に戻せません」
+async function openDeleteUser(key, label) {
+  const d = await api('adminDeleteUser', { key }); if (!d.ok) return toast(errText(d.error), 6000);
+  const stage = two => {
+    showSheet(`<div class="sheethead"><button type="button" id="s-back" class="small">← もどる</button><b>${esc(label)} を削除</b></div>
+    <div class="sheetbody"><div class="card pinbox">${two
+      ? `<p class="warn"><b>${esc(label)}</b> を削除します。元に戻せません。</p>`
+      : `<p>削除する人: <b>${esc(label)}</b></p><p class="note">シートのこの人の行が消えます。猫の記録 ${d.records}件とえさ場 ${d.sites}件は「退会者」に移り、一覧・地図・集計には出なくなります。写真は消えません。</p>`}
+    <button type="button" id="du-go" class="wide danger">${two ? 'はい、削除します' : '次へ'}</button><button type="button" id="du-cancel" class="wide">やめる</button></div></div>`);
+    $('#s-back').onclick = $('#du-cancel').onclick = () => closeSheet();
+    $('#du-go').onclick = e => { if (!two) return stage(true); return busy(e.currentTarget, async () => {
+      const r = await adminApi('adminDeleteUser', { key, confirm: '削除' });
+      if (!r.ok && r.error !== 'already_done') return toast(errText(r.error), 6000);
+      closeSheet(); toast(`${label} を削除しました`); renderAdmin();
+    }); };
+  };
+  stage(false);
 }
 // ---- 管理の画面の「グループ」(2026-10-28 その3。管理者だけ。受け付けも毎回「管理者か」で照らす)----
 // 一覧(名前・リーダー・人数・記録数)・リーダーを替える(メンバーの Google の人から)・外す・グループを消す。
@@ -2414,10 +2499,10 @@ async function wipeLocal(discard) {
 }
 // 管理の操作の ID(reqId): 押した時に1つ作る。返事が来なかった(電波・時間切れ)のあとに同じ内容で押し直したら、同じ ID で送る(受け付けは2回目を行わない)
 let lastReq = null;
-async function adminApi(action, extra) {
+async function adminApi(action, extra, secret) {   // secret: 4桁のパスワード(送るだけ。押し直しの見分けの控えには入れない)
   const key = action + JSON.stringify(extra);
   if (!lastReq || lastReq.key !== key) lastReq = { key, id: newId('q') };
-  const r = await api(action, { ...extra, reqId: lastReq.id });
+  const r = await api(action, { ...extra, ...secret, reqId: lastReq.id });
   if (!noAnswer(r.error)) lastReq = null;
   if (r.error === 'id_needed') adminRelogin();   // 20261027-2340: 管理の画面を開いたまま切れた時も、知らせだけで終わらずにその場に Google のボタンを出す
   return r;
@@ -2433,9 +2518,13 @@ async function adminClick(b, e) {
   if (b.dataset.ag) return agClick(b);   // ★その3 グループの管理
   if (b.id === 'ad-wipe') return openWipe();
   if (b.id === 'ad-bugs') return openBugAdmin();
+  if (b.id === 'ad-rp-change') { const st = await api('adminRolePinStatus'); if (!st.ok) return toast(errText(st.error), 5000); return openRolePinSet(st.set); }
   if (b.id === 'ad-add') {
     const email = $('#ad-email').value.trim(), role = $('#ad-role').value; if (!email) return toast('メールアドレスを入れてください');
-    const r = await adminApi('adminAddGoogle', { email, role }); if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
+    const add = rolePin => adminApi('adminAddGoogle', { email, role }, rolePin ? { rolePin } : undefined);
+    const r = rolePinNeeded('', role) ? await withRolePin({ title: `「${ROLE_LABEL(role)}」を付けて登録`, note: `${email} を「${ROLE_LABEL(role)}」で登録します。4桁のパスワードを入れてください。`, op: add }) : await add();
+    if (!r) return;
+    if (!r.ok) { if (r.error === 'already_done') renderAdmin(); return toast(errText(r.error), 6000); }
     toast(`登録しました(${r.recorder.masked})`); return renderAdmin();
   }
   if (b.id === 'ad-card') {
@@ -2465,6 +2554,7 @@ async function adminClick(b, e) {
     const r = await adminApi('adminSetState', { key, stopped }); if (!r.ok) return toast(errText(r.error), 5000);
     toast(stopped ? '止めました' : 'また使えるようにしました'); return renderAdmin();
   }
+  if (act === 'delete') return openDeleteUser(key, label);
   if (act === 'resetpin') return openPinForm({ title: `${label} の番号を戻す`, note: 'この人に伝える新しい暗証番号(数字4つ)を入れてください。カードはそのまま使えます。この人の端末では、もう一度カードをかざして新しい番号を入れることになります。', button: 'この番号にする',
     onsubmit: async pin => { const r = await adminApi('adminCardResetPin', { key, pin }); if (!r.ok) return toast(errText(r.error), 5000); closeSheet(); toast('番号を戻しました。新しい番号をその人に伝えてください', 5000); renderAdmin(); } });
   if (act === 'reissue') return openPinForm({ title: `${label} のカードを作り直す`, note: '前のカードは使えなくなります(記録はつながります)。新しいカードの暗証番号(数字4つ)を入れてください。', button: '作り直す(QR を出す)',
@@ -2474,9 +2564,13 @@ async function adminClick(b, e) {
 async function onAdminChange(e) {
   const sel = e.target.closest('select[data-act=role]'), card = e.target.closest('.person'); if (!sel || !card || !adminData) return;
   const key = card.dataset.key, x = adminData.recorders.find(p => p.key === key); if (!x) return;
-  sel.disabled = true; const r = await adminApi('adminSetRole', { key, role: sel.value }); sel.disabled = false;   // 返事が来るまで選び直せない
+  const role = sel.value, label = x.name || x.masked, go = rolePin => adminApi('adminSetRole', { key, role }, rolePin ? { rolePin } : undefined);
+  sel.disabled = true;   // 返事が来るまで選び直せない
+  const r = rolePinNeeded(x.role, role) ? await withRolePin({ title: `「${ROLE_LABEL(role)}」を付ける`, note: `${label} を「${ROLE_LABEL(role)}」にします。4桁のパスワードを入れてください。`, op: go }) : await go();
+  sel.disabled = false;
+  if (!r) { sel.value = x.role; return; }   // やめた・止まっている
   if (!r.ok) { toast(errText(r.error), 5000); sel.value = x.role; return; }
-  toast(r.unchanged ? '変わっていません' : `役割を「${ROLE_LABEL(sel.value)}」にしました`); renderAdmin();
+  toast(r.unchanged ? '変わっていません' : `役割を「${ROLE_LABEL(role)}」にしました`); renderAdmin();
 }
 // 暗証番号を1つ聞く小さな画面(管理の操作)
 function openPinForm({ title, note, button, onsubmit }) {

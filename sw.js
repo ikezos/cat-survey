@@ -20,7 +20,9 @@
 // 20261101 line-trial(v50): 問い合わせの窓口を LINE に・試用版の注意・知らせを1回。控えの決まりは前と同じ。
 // 20261101 coat-offline(v51): 毛色の見本を sw の組と同じ版(?v=版)で読む(電波なしで出す)。画面の側で入れ替えの頼み方を直した。控えの決まりは前と同じ。
 // 20261027-1640: 中身が変わる物(説明書の PDF・使い方の画像・毛色の写真)も「?v=版」付きで読む。同じ名前のまま中身が変わると、古い控えが出続けたため(版が上がれば名前が変わり、必ずネットから取る)。
-const VER = 51, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+// 20261102 access-audit(v55): 変化の時刻を画面へ出す所の直し(迂回の点検)。控えの決まりは前と同じ。
+// 20261102 terms-withdrawal(v56): 利用のきまりに退会した時の記録の扱いを足した(知らせをもう一度出す)・説明書に管理者の項を足した。控えの決まりは前と同じ。
+const VER = 56, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);
