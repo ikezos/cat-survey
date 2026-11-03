@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v58">
+<meta name="app-ver" content="cat-survey-v59">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=58">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=58">
-<link rel="stylesheet" href="style.css?v=58">
+<link rel="stylesheet" href="lib/leaflet.css?v=59">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=59">
+<link rel="stylesheet" href="style.css?v=59">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -49,11 +49,11 @@ setTimeout(function () {
 <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/><path d="M4 21h16"/></symbol>
 </svg>
 <div class="top">
-  <header><button type="button" id="btn-back" class="backbtn hidden" aria-label="ホームへ戻る"><svg class="ic"><use href="#i-back"/></svg><span>ホーム</span></button><h1 id="screen-title">まちねこ帳 <small>試用版</small></h1><span id="pending" class="badge"></span></header>
+  <header><button type="button" id="btn-back" class="backbtn hidden" aria-label="ホームへ戻る"><svg class="ic"><use href="#i-back"/></svg><span>ホーム</span></button><h1 id="screen-title">まちねこ帳 <small>先行版 1.0</small><span class="vol">このアプリはボランティアが作成しました。</span></h1><span id="pending" class="badge"></span></header>
   <div id="dbmsg" class="dbmsg hidden" role="alert"><p class="dbtext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="bootmsg" class="dbmsg hidden" role="alert"><p class="boottext"></p><button type="button" class="small" onclick="location.reload()">開き直す</button></div>
   <div id="updmsg" class="updmsg hidden" role="status"><p>新しい版があります。</p><button type="button" id="btn-update" class="small">更新</button></div>
-  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 退会すると、猫の記録は名前を外して残ります(調査の数には含めません)。また、申し込みの情報と、メールの暗号化を加えました。</p><p>問い合わせの窓口は LINE の「ikezosアプリ問い合わせ」です。現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
+  <div id="termsmsg" class="termsmsg hidden" role="status"><p><b>利用のきまりを更新しました</b>: 先行版になりました。招待制です。</p><p>問い合わせの窓口は LINE の「ikezosアプリ問い合わせ」です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p><div class="row2"><a class="linkbtn" id="terms-more" href="privacy.html">くわしく</a><button type="button" id="btn-termsok" class="small">わかった</button></div></div>
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
@@ -99,20 +99,20 @@ setTimeout(function () {
       <p class="note">LINE でお問い合わせいただいた内容は、LINE ヤフー株式会社のサービス上に保存されます。猫の居場所・人の名前・写真など、個人を特定できる情報は送らないでください。</p>
     </div>
     <p id="blockpending" class="note hidden"></p>
-    <p class="note">登録された方だけが使えます。管理者が登録した Google アカウントでログインしてください。はじめての方は、下の「利用の申し込み」をご覧ください。</p>
+    <p class="note">先行版:現在は、招待を受けた方だけがお試しいただけます。それ以外の方は、正式版の公開をお待ちください。管理者が登録した Google アカウントでログインしてください。</p>
     <div id="gsi-btn"></div>
     <button type="button" id="btn-regsi" class="small hidden">Google のボタンを出し直す</button>
     <p id="loginmsg" class="note"></p>
     <div id="applybox" class="applybox">
-      <h4>はじめての方へ: 利用の申し込み</h4>
-      <p class="note">使うには、管理者の登録が要ります。公式 LINE かメールで、次の2つを送ってください。</p>
+      <h4>招待を受けた方へ: 連絡の窓口</h4>
+      <p class="note">招待を受けた方は、公式 LINE かメールで、次の2つを送ってください。管理者が登録します。</p>
       <ul class="note"><li>ログインに使う Google のメールアドレス</li><li>呼び名(本名でなくてかまいません)</li></ul>
-      <a class="linkbtn" id="apply-line" href="https://lin.ee/600DoZ1" target="_blank" rel="noopener noreferrer">公式 LINE で申し込む</a>
-      <a class="linkbtn" id="apply-mail" href="mailto:support@ikezos.com">メールで申し込む(support@ikezos.com)</a>
+      <a class="linkbtn" id="apply-line" href="https://lin.ee/600DoZ1" target="_blank" rel="noopener noreferrer">公式 LINE で連絡する</a>
+      <a class="linkbtn" id="apply-mail" href="mailto:support@ikezos.com">メールで連絡する(support@ikezos.com)</a>
       <p class="note">猫の居場所・写真・住所は送らないでください。</p>
       <p class="note">LINE でお問い合わせいただいた内容は、LINE ヤフー株式会社のサービス上に保存されます。猫の居場所・人の名前・写真など、個人を特定できる情報は送らないでください。</p>
     </div>
-    <p id="joinnote" class="warn joinnote hidden" role="status">グループの参加用リンクを開きました。ログインすると、参加の申し込みに進みます。</p>
+    <p id="joinnote" class="warn joinnote hidden" role="status">グループの参加用リンクを開きました。ログインすると、参加の手続きに進みます。</p>
     <a class="linkbtn" id="help-login" href="help.html">使い方を見る</a>
     <p id="terms-login" class="note">集めた記録は、個人や細かい場所が分からない形にまとめたうえで、行政への提言や研究に使うことがあります。まとめる単位は、区や、約500m四方の区画ごとの頭数などです。</p>
     <a class="linkbtn" id="privacy-login" href="privacy.html">利用のきまりを見る</a>
@@ -237,8 +237,8 @@ setTimeout(function () {
     <a class="linkbtn" id="privacy-settings" href="privacy.html">利用のきまりを見る</a>
   </div>
   <div class="card" id="trialset">
-    <h3>試用版について</h3>
-    <p class="note">現在は試用版です。正式版へ記録を引き継げるよう努めますが、保証はできません。</p>
+    <h3>先行版について</h3>
+    <p class="note">現在は先行版 1.0 です。招待を受けた方だけがお試しいただけます。正式版へ記録を引き継げるよう努めますが、保証はできません。</p>
   </div>
   <div class="card" id="contactset">
     <h3>問い合わせ</h3>
@@ -254,6 +254,7 @@ setTimeout(function () {
     <button id="btn-clear" class="wide danger">この端末の記録をすべて消す</button>
     <p class="note">消えるのはこの端末の控えだけです。送信済みの記録はサーバー側に残っています。</p>
   </div>
+  <p class="note vernote" id="verfoot">先行版 1.0(内部の版: 画面 <span id="appver2"></span>・受け付け 48)</p>
 </section>
 </main>
 <!-- 20261027-1050c: v25 までの app.js(公開直後の HTTP の控え)が探す管理のボタンの受け皿。画面には出ない -->
@@ -266,12 +267,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=58"></script>
-<script src="lib/leaflet.markercluster.js?v=58"></script>
-<script src="lib/qr.js?v=58"></script>
-<script src="lib/jsQR.js?v=58"></script>
-<script src="scan.js?v=58"></script>
-<script src="config.js?v=58"></script>
-<script src="app.js?v=58"></script>
+<script src="lib/leaflet.js?v=59"></script>
+<script src="lib/leaflet.markercluster.js?v=59"></script>
+<script src="lib/qr.js?v=59"></script>
+<script src="lib/jsQR.js?v=59"></script>
+<script src="scan.js?v=59"></script>
+<script src="config.js?v=59"></script>
+<script src="app.js?v=59"></script>
 </body>
 </html>

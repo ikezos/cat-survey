@@ -86,7 +86,7 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const APP_VER = 'cat-survey-v58';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v59';   // sw.js のキャッシュの名前と同じにする
 const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
@@ -267,7 +267,7 @@ const loggedIn = () => tokenValid() && !auth.pending && wasVerified(auth);   // 
 // 受け付けが「この人は使えない」と答えた時(登録されていない・止められた・カードが使えない)。ログインの印を消し、入力・一覧などの画面を出さない
 const DENY = ['not_registered', 'stopped', 'email_not_verified', 'pass_invalid', 'card_stopped', 'card_not_found'];
 let blocked = null;   // 使えない理由(画面に出す)。ログインしていない時の画面は、理由が無くても同じ(locked)
-const DENY_TEXT = { not_registered: 'この Google アカウントは、まだ登録されていません。下の「利用の申し込み」から申し込んでください。', stopped: 'このアカウントは止められています。下の「問い合わせ」から連絡してください。',
+const DENY_TEXT = { not_registered: 'この Google アカウントは、まだ登録されていません。先行版は、招待を受けた方だけがお試しいただけます。', stopped: 'このアカウントは止められています。下の「問い合わせ」から連絡してください。',
   unverified: '電波がなくて、登録を確かめられませんでした。電波のある所で、もう一度ログインしてください。' };
 // 2026-11-02 v57(艦長 msg 8730): 新しい人の利用の申し込み(公式 LINE・メール)。登録されていない人には、ログインしようとしたアドレスを本人の画面にだけ出す。
 // blockedEmail は覚えるだけで端末に保存しない(開き直すと消える)。止められた人は申し込みではなく問い合わせへ
@@ -275,9 +275,9 @@ const APPLY_TO = 'support@ikezos.com';
 let blockedEmail = '';
 function applyMail(kind, email) {
   const who = 'Google のメールアドレス: ' + (email || '(ここに書いてください)');
-  const sub = kind === 'contact' ? 'まちねこ帳 問い合わせ' : 'まちねこ帳 利用の申し込み';
+  const sub = kind === 'contact' ? 'まちねこ帳 問い合わせ' : 'まちねこ帳 先行版のご連絡';
   const lines = kind === 'contact' ? ['まちねこ帳について問い合わせます。', '', 'ログインに使った ' + who, '', '問い合わせの内容:', '', '', '※猫の居場所・写真・住所は書かないでください。']
-    : ['まちねこ帳の利用を申し込みます。', '', 'ログインに使う ' + who, '呼び名(本名でなくてかまいません): ', '', '※猫の居場所・写真・住所は書かないでください。'];
+    : ['まちねこ帳(先行版)の招待を受けた者です。', '', 'ログインに使う ' + who, '呼び名(本名でなくてかまいません): ', '', '※猫の居場所・写真・住所は書かないでください。'];
   return `mailto:${APPLY_TO}?subject=${encodeURIComponent(sub)}&body=${encodeURIComponent(lines.join('\r\n'))}`;   // 改行は CRLF(mailto の決まり)。encodeURIComponent は空白を %20 にする(+ にしない)
 }
 function renderApply() {
@@ -286,12 +286,12 @@ function renderApply() {
   $('#apply-mail').href = applyMail('apply', '');
   gen.classList.toggle('hidden', !!mode);   // 断られた時は、下の一般の枠ではなく、理由のすぐ下に出す(同じ案内を2つ出さない)
   box.classList.toggle('hidden', !mode); if (!mode) return;
-  $('#applyb-h').textContent = apply ? '利用の申し込み' : '問い合わせ';
+  $('#applyb-h').textContent = apply ? '先行版のご案内' : '問い合わせ';
   const who = $('#applyb-who'); who.textContent = blockedEmail ? `ログインしようとしたアカウント: ${blockedEmail}` : ''; who.classList.toggle('hidden', !blockedEmail);
-  $('#applyb-ask').textContent = apply ? (blockedEmail ? 'このアドレスを書いて、公式 LINE かメールで申し込んでください。呼び名(本名でなくてかまいません)も添えてください。' : 'ログインに使う Google のメールアドレスと、呼び名(本名でなくてかまいません)を書いて、公式 LINE かメールで申し込んでください。')
+  $('#applyb-ask').textContent = apply ? (blockedEmail ? '招待を受けた方は、このアドレスを書いて、公式 LINE かメールで連絡してください。呼び名(本名でなくてかまいません)も添えてください。それ以外の方は、正式版の公開をお待ちください。' : '招待を受けた方は、ログインに使う Google のメールアドレスと、呼び名(本名でなくてかまいません)を書いて、公式 LINE かメールで連絡してください。それ以外の方は、正式版の公開をお待ちください。')
     : 'また使いたい時や、分からない事は、LINE かメールで問い合わせてください。';
-  $('#applyb-line').textContent = apply ? '公式 LINE で申し込む' : 'LINE で問い合わせる';
-  $('#applyb-mail').textContent = (apply ? 'メールで申し込む' : 'メールで問い合わせる') + `(${APPLY_TO})`;
+  $('#applyb-line').textContent = apply ? '公式 LINE で連絡する' : 'LINE で問い合わせる';
+  $('#applyb-mail').textContent = (apply ? 'メールで連絡する' : 'メールで問い合わせる') + `(${APPLY_TO})`;
   $('#applyb-mail').href = applyMail(mode, blockedEmail);
 }
 const whoLabel = () => !auth ? '' : isCard() ? `${auth.name || 'カードの人'}(カード)` : (auth.email || 'ログイン済み');
@@ -384,7 +384,7 @@ function denyAccess(err) {
   renderAuth(); toast(errText(err), 7000);
 }
 // 利用のきまりの更新の知らせ(v47): ログインしている時に出し、「わかった」で端末に覚える。v50 から新しい人にも1回出す(試用版の注意を見てもらうため)
-const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261102c';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
+const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261103a';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
     const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
@@ -514,7 +514,7 @@ function renderAuth() {
   document.body.classList.toggle('locked', !on);   // ログインしていない人(確かめ中・断られた・一度もログインしていない・確かめが通っていない)には、ログインの画面と「使い方を見る」だけを出す(CSS)
   const bm = $('#blockmsg'); bm.classList.toggle('hidden', !blocked);
   bm.textContent = blocked ? (DENY_TEXT[blocked] || errText(blocked)) : '';
-  if (!on) { const t = document.querySelector('.tab.active'); if (!t || t.id !== 'tab-record') showTab('record'); updateBadge().then(() => { const n = (($('#pending').textContent.match(/\d+/) || [0])[0]); $('#blockpending').textContent = n > 0 ? `この端末に未送信の記録が ${n} 件あります(消えていません。登録された方でログインすると送れます)。` : ''; $('#blockpending').classList.toggle('hidden', !(n > 0)); }); }
+  if (!on) { const t = document.querySelector('.tab.active'); if (!t || t.id !== 'tab-record') showTab('record'); else setScreenTitle('record'); updateBadge().then(() => { const n = (($('#pending').textContent.match(/\d+/) || [0])[0]); $('#blockpending').textContent = n > 0 ? `この端末に未送信の記録が ${n} 件あります(消えていません。登録された方でログインすると送れます)。` : ''; $('#blockpending').classList.toggle('hidden', !(n > 0)); }); }
   else $('#blockpending').classList.add('hidden');
   const rg = document.getElementById('btn-regsi'); if (rg) rg.classList.toggle('hidden', on || !configured() || !CONF.GOOGLE_CLIENT_ID || (gsiState === 'ready' && !!document.querySelector('#gsi-btn *')));
   const m = $('#loginmsg');
@@ -2886,8 +2886,13 @@ async function demo() {
 }
 
 // 画面の名前(上の名前)と、下の4つ以外の画面(上に「← ホーム」が出る)
-const TITLES = { home: 'まちねこ帳 <small>試用版</small>', group: 'グループ', join: 'グループに参加', record: '猫を記録する', list: '記録の一覧', map: '地図', sites: 'えさ場', stats: '集計', settings: '設定', admin: '管理', bug: '不具合を知らせる' };
+const TITLES = { home: 'まちねこ帳 <small>先行版 1.0</small><span class="vol">このアプリはボランティアが作成しました。</span>', group: 'グループ', join: 'グループに参加', record: '猫を記録する', list: '記録の一覧', map: '地図', sites: 'えさ場', stats: '集計', settings: '設定', admin: '管理', bug: '不具合を知らせる' };
 const MAIN_TABS = ['home', 'record', 'list', 'map'];
+// 上の名前: ログインしていない間は、どの画面へ向かう途中でも、アプリ名(ホームと同じ)を出す。ログインした後は今の画面の名前
+function setScreenTitle(t) {
+  if (!loggedIn()) t = 'home';
+  $opt('#screen-title').innerHTML = TITLES[t] || t; document.title = (t === 'home' ? '' : $opt('#screen-title').textContent + ' - ') + 'まちねこ帳';
+}
 // 戻る: スマホの戻るボタン・端から払う操作は、ブラウザの履歴で受ける。下の4つの間の行き来は履歴を積まず(replaceState)、戻るとホームへ。ホームから入る画面だけ積む(pushState)
 function showTab(t, fromPop) {
   if (!loggedIn() && t !== 'record') t = 'record';   // ログインしていない人は、ログインの画面(入力の欄)にしか行けない
@@ -2896,7 +2901,7 @@ function showTab(t, fromPop) {
   if (t !== 'settings' && t !== 'bug' && t !== 'home') lastScreen = t;   // 不具合の知らせの「どの画面で」の初めの選び(0607)
   document.querySelectorAll('#bottomnav button').forEach(b => { const on = b.dataset.tab === t; b.classList.toggle('active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
-  $opt('#screen-title').innerHTML = TITLES[t] || t; document.title = (t === 'home' ? '' : $opt('#screen-title').textContent + ' - ') + 'まちねこ帳';
+  setScreenTitle(t);
   $opt('#btn-back').classList.toggle('hidden', MAIN_TABS.includes(t));
   if (!fromPop) { try { const cur = history.state || { tab: 'home', d: 0 };
     if (cur.tab === t) { /* 同じ画面 */ } else if (t === 'home') { if (cur.d > 0) history.go(-cur.d); else history.replaceState({ tab: 'home', d: 0 }, ''); }
@@ -3098,7 +3103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   bootStep('版の知らせ', () => {
   $opt('#btn-update').onclick = doUpdate;
-  $opt('#appver').textContent = APP_VER.replace('cat-survey-', '');
+  $opt('#appver').textContent = APP_VER.replace('cat-survey-', ''); $opt('#appver2').textContent = APP_VER.replace('cat-survey-', '');
   $opt('#btn-vercheck').onclick = e => busy(e.currentTarget, () => checkUpdate(true), '確かめています…');
   });
   bootStep('不具合の知らせ', () => {

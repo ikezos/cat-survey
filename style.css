@@ -153,7 +153,7 @@ label.fl:has(#wipe-discard){display:flex;gap:10px;align-items:flex-start}
 .ic{width:28px;height:28px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.ic.sm{width:20px;height:20px}.ic.md{width:30px;height:30px}.ic.lg{width:40px;height:40px}.ic.xl{width:48px;height:48px}
 .note{font-size:16px;color:#555}.hint{font-size:15px}
 header{gap:8px;justify-content:flex-start;min-height:60px;padding:6px 12px}
-header h1{flex:1;font-size:20px;line-height:1.25}header h1 small{font-size:14px}
+header h1{flex:1;font-size:20px;line-height:1.25}header h1 small{font-size:14px}h1 .vol{display:block;font-size:11px;font-weight:400;line-height:1.3;opacity:.9;margin-top:1px}.vernote{font-size:11px;text-align:center;opacity:.75;margin:6px 8px 14px}
 .backbtn{display:inline-flex;align-items:center;gap:4px;min-height:56px;min-width:56px;padding:0 12px 0 8px;border:2px solid #fff;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:17px;font-weight:bold}
 .badge{font-size:16px;background:#a34a00;font-weight:bold}
 main{padding:10px 10px calc(96px + env(safe-area-inset-bottom))}
