@@ -18,16 +18,16 @@ setTimeout(function () {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v59">
+<meta name="app-ver" content="cat-survey-v60">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=59">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=59">
-<link rel="stylesheet" href="style.css?v=59">
+<link rel="stylesheet" href="lib/leaflet.css?v=60">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=60">
+<link rel="stylesheet" href="style.css?v=60">
 </head>
 <body class="locked">
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -57,6 +57,7 @@ setTimeout(function () {
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <main>
+<p class="osnote" id="osnote">使えるスマホ: iPhone は iOS 13.4 以上、Android は 5.0 以上(Chrome を最新にしてください)。</p>
 <div id="scopebar" class="seg hidden" role="group" aria-label="見る範囲"><button type="button" data-scope="mine" class="active">自分の記録</button><button type="button" data-scope="all">全員の記録</button></div>
 <div id="relogin" class="card relogin hidden" role="status"><p><b>全員の記録を見るには、Google でもう一度確かめます。</b></p><p class="note">下の Google のボタンを押して、いつもの Google アカウントを選んでください。確かめが済むと、そのまま全員の記録が出ます(ログアウトはしません。この端末の記録も消えません)。</p><div class="gsi-spot"></div><button type="button" class="small regsi hidden">Google のボタンを出し直す</button><p class="note gsi-msg"></p></div>
 <div id="delbar" class="hidden"><label class="line chk"><input type="checkbox" id="showdel"><span>削除済みも見る(管理者)</span></label></div>
@@ -267,12 +268,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=59"></script>
-<script src="lib/leaflet.markercluster.js?v=59"></script>
-<script src="lib/qr.js?v=59"></script>
-<script src="lib/jsQR.js?v=59"></script>
-<script src="scan.js?v=59"></script>
-<script src="config.js?v=59"></script>
-<script src="app.js?v=59"></script>
+<script src="lib/leaflet.js?v=60"></script>
+<script src="lib/leaflet.markercluster.js?v=60"></script>
+<script src="lib/qr.js?v=60"></script>
+<script src="lib/jsQR.js?v=60"></script>
+<script src="scan.js?v=60"></script>
+<script src="config.js?v=60"></script>
+<script src="app.js?v=60"></script>
 </body>
 </html>
