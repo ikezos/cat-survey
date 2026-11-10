@@ -26,7 +26,8 @@
 // 20261102 email-encrypt(v58): 管理の「メールを見る」で、受け付け 版48 が暗号を戻して返すメールを出す(移し替えた人)。控えの決まりは前と同じ。
 // 20261103 senkou(v59): 呼び名を「先行版 1.0」に・招待制の文・知らせを出し直す。控えの決まりは前と同じ。
 // 20261105 v60: ログインの画面に「使えるスマホ」の一文(index.html に直接書く)。控えの決まりは前と同じ。
-const VER = 60, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
+// 20261110 v61: 白い画面の代わりに原因ごとの案内(アプリの中のブラウザ・保存の場所・起動の失敗)。控えの決まりは前と同じ。
+const VER = 61, CACHE = 'cat-survey-v' + VER, NET_WAIT_MS = 3000;
 const COAT = ['kijitora', 'kijishiro', 'kuroshiro', 'kuro', 'mike', 'chatora', 'chashiro', 'sabatora', 'sabashiro', 'sabi', 'shiro', 'hai', 'haishiro', 'siam'].flatMap(n => ['', '-l'].flatMap(s => ['webp', 'jpg'].map(x => `./img/coat/${n}${s}.${x}`)));
 const PLAIN = ['./', './index.html', './help.html', './manifest.json', './icon-192-v30.png', './icon-512-v30.png', './icon-maskable-192-v30.png', './icon-maskable-512-v30.png', './apple-touch-icon-v30.png', './favicon-32-v30.png', './favicon-16-v30.png', './lib/images/layers.png', './lib/images/layers-2x.png'];
 const PAIRED = ['./app.js', './config.js', './style.css', './scan.js', './lib/leaflet.css', './lib/leaflet.js', './lib/qr.js', './lib/jsQR.js', './lib/leaflet.markercluster.js', './lib/MarkerCluster.css'].concat(COAT).map(f => f + '?v=' + VER);

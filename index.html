@@ -3,33 +3,135 @@
 <head>
 <meta charset="utf-8">
 <script>
-// 起動の見張り(20261027-0731・0820 で先頭へ): 12秒たっても起動が終わらない時、どの段で止まっても案内と「開き直す」を出す。
-// 先頭に置くのは、見た目(css)やプログラム(js)の読み込みが遅い時も、この見張りだけは先に動くようにするため(前は css の後ろにあり、css が届くまで動かなかった)
+// 起動の見張り(20261027-0731・0820 で先頭へ。v61 で広げた): app.js に頼らない。古いスマホでも読めるよう、古い書き方(var・function)だけで書く。
+// v61(艦長 msg 10223・iPhone 16 で白い画面): 白い画面のままにせず、原因ごとの案内(#bootguide)を出す。外へは何も送らない。
+//  ・アプリの中のブラウザ(LINE・Instagram・Facebook など)→ 最初に「Safari(Android は Chrome)で開く」と開き方・アドレスを写すボタン(このまま使うこともできる)
+//  ・保存の場所(localStorage・sessionStorage・indexedDB)が使えない → 「すべての Cookie をブロック」を切る・プライベートでない画面で開く(app.js も使えない時にここを呼ぶ)
+//  ・8秒たっても起動が終わらない/起動の前に誤りが出た/自分のサイトのプログラムが読めなかった → 「再読み込み」と、古い版が残っている時の直し方
+//  起動が後から終わったら、起動の案内は自分で消える(電波が遅いだけの時)
 window.catT0 = Date.now();
-setTimeout(function () {
-  if (window.catBooted) return;
-  var t = 'アプリの起動に時間がかかっています。電波のある所で「開き直す」を押してください(この端末の記録は消えていません)。';
-  var m = document.getElementById('bootmsg');
-  if (!m) { m = document.createElement('div'); m.id = 'bootmsg2'; m.setAttribute('role', 'alert'); m.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#fff3cd;color:#000;padding:12px;font-size:16px;border-bottom:2px solid #c90';
-    m.innerHTML = '<p class="boottext" style="margin:0 0 8px"></p><button type="button" style="min-height:44px;font-size:16px" onclick="location.reload()">開き直す</button>'; (document.body || document.documentElement).appendChild(m); }
-  m.querySelector('.boottext').textContent = t; m.classList.remove('hidden');
-}, 12000);
+(function () {
+  var ua = navigator.userAgent || '', ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var inapp = /\bLine\/|FBAN|FBAV|FB_IAB|Instagram|Twitter|MicroMessenger|KAKAOTALK|YJApp|; wv\)/.test(ua);
+  var store = true, shown = {}, closed = {}, OK1 = 'catSurvey.guideOk';
+  try {
+    localStorage.setItem('catSurvey.chk', '1'); localStorage.removeItem('catSurvey.chk');
+    sessionStorage.setItem('catSurvey.chk', '1'); sessionStorage.removeItem('catSurvey.chk');
+    if (!window.indexedDB) store = false;
+  } catch (e) { if (!e || e.name !== 'QuotaExceededError') store = false; }
+  try { if (sessionStorage.getItem(OK1)) closed.inapp = closed.storage = true; } catch (e) { /* 覚えられない時は毎回出す */ }
+  function box() { return document.getElementById('bootguide'); }
+  function paint() {
+    var g = box(); if (!g) return;
+    var any = false, ps = g.querySelectorAll('[data-why]');
+    for (var i = 0; i < ps.length; i++) { var w = ps[i].getAttribute('data-why'), on = !!shown[w] && !closed[w]; ps[i].style.display = on ? '' : 'none'; if (on) any = true; }
+    g.style.display = any ? '' : 'none';
+  }
+  window.catGuide = function (why) { if (why === 'boot' && window.catBooted) return; shown[why] = true; paint(); };
+  function copyUrl(b) {
+    var u = box().querySelector('.gurl');
+    var done = function () { b.textContent = '写しました'; };
+    var sel = function () {
+      try { u.focus(); u.select(); u.setSelectionRange(0, u.value.length); if (document.execCommand('copy')) { done(); return; } } catch (e) { /* */ }
+      b.textContent = '上の欄を長押しして写してください';
+    };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(u.value).then(done, sel); return; } } catch (e) { /* */ }
+    sel();
+  }
+  function fresh() {   // 古い版の控え(サービスワーカーと、その控え)だけを捨てて開き直す。記録(端末の入れ物)には触らない
+    var gone = false, go = function () { if (gone) return; gone = true; location.reload(); };
+    setTimeout(go, 3000);
+    try {
+      var p = [];
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) p.push(navigator.serviceWorker.getRegistrations().then(function (rs) { for (var i = 0; i < rs.length; i++) rs[i].unregister(); }));
+      if (window.caches && caches.keys) p.push(caches.keys().then(function (ks) { var q = []; for (var i = 0; i < ks.length; i++) { if (/^cat-survey-v\d+$/.test(ks[i])) q.push(caches['delete'](ks[i])); } return Promise.all(q); }));
+      Promise.all(p).then(go, go);
+    } catch (e) { go(); }
+  }
+  window.catGuideInit = function () {   // 案内の枠のすぐ後ろから呼ぶ(app.js や css が届かなくても動く)
+    var g = box(); if (!g) return;
+    g.className = ios ? 'is-ios' : 'is-and';
+    var u = g.querySelector('.gurl'); if (u) u.value = location.protocol + '//' + location.host + location.pathname + location.search;   // # の後ろ(カードの合言葉)は写さない
+    var h = g.querySelectorAll('.ghost'); for (var i = 0; i < h.length; i++) h[i].textContent = location.host;
+    g.onclick = function (ev) {
+      var b = ev.target; while (b && b !== g && !(b.getAttribute && b.getAttribute('data-act'))) b = b.parentNode;
+      if (!b || b === g) return; var a = b.getAttribute('data-act');
+      if (a === 'copy') copyUrl(b);
+      else if (a === 'close') { closed.inapp = closed.storage = true; try { sessionStorage.setItem(OK1, '1'); } catch (e) { /* */ } paint(); }
+      else if (a === 'reload') location.reload();
+      else if (a === 'fresh') { b.textContent = '開き直しています…'; fresh(); }
+    };
+    if (inapp) shown.inapp = true;
+    if (!store) shown.storage = true;
+    paint();
+  };
+  setTimeout(function () { if (!window.catBooted) window.catGuide('boot'); }, 8000);
+  window.addEventListener('error', function (ev) {   // 起動の前の誤り・自分のサイトのプログラムの読み込みの失敗(画像・css・ほかのサイトの部品は見ない)
+    if (window.catBooted) return;
+    var t = ev && ev.target;
+    if (t && t !== window) { if (t.tagName !== 'SCRIPT' || String(t.src || '').indexOf(location.protocol + '//' + location.host + '/') !== 0) return; }
+    setTimeout(function () { if (!window.catBooted) window.catGuide('boot'); }, 2500);
+  }, true);
+  var iv = setInterval(function () { if (!window.catBooted) return; clearInterval(iv); if (shown.boot) { shown.boot = false; paint(); } }, 1000);
+})();
 </script>
+<style>
+/* v61: 白い画面の代わりの案内(style.css が届かなくても読めるよう、ここに置く) */
+#bootguide{position:fixed;left:0;right:0;top:0;bottom:0;z-index:9999;overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;color:#111;padding:16px 16px 48px;font-size:18px;line-height:1.6;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+#bootguide>div{border:3px solid #c90;background:#fff8e1;border-radius:12px;padding:12px 14px;margin:0 0 14px}
+#bootguide h2{font-size:21px;margin:0 0 8px;line-height:1.4}
+#bootguide p{margin:0 0 10px}
+#bootguide button{display:block;width:100%;min-height:52px;font-size:18px;font-weight:bold;margin:8px 0;border-radius:10px;border:2px solid #2f6f4f;background:#fff;color:#1d4b34}
+#bootguide button.gmain{background:#2f6f4f;color:#fff}
+#bootguide .gurl{display:block;width:100%;box-sizing:border-box;font-size:16px;padding:8px;border:1px solid #999;border-radius:8px;background:#fff;color:#111}
+#bootguide.is-ios .g-and,#bootguide.is-and .g-ios{display:none}
+</style>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6f4f">
 <meta name="copyright" content="© 2026 ikezos">
-<meta name="app-ver" content="cat-survey-v60">
+<meta name="app-ver" content="cat-survey-v61">
 <title>まちねこ帳</title>
 <meta name="apple-mobile-web-app-title" content="まちねこ帳">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon-32-v30.png" type="image/png" sizes="32x32">
 <link rel="icon" href="favicon-16-v30.png" type="image/png" sizes="16x16">
 <link rel="apple-touch-icon" href="apple-touch-icon-v30.png" sizes="180x180">
-<link rel="stylesheet" href="lib/leaflet.css?v=60">
-<link rel="stylesheet" href="lib/MarkerCluster.css?v=60">
-<link rel="stylesheet" href="style.css?v=60">
+<link rel="stylesheet" href="lib/leaflet.css?v=61">
+<link rel="stylesheet" href="lib/MarkerCluster.css?v=61">
+<link rel="stylesheet" href="style.css?v=61">
 </head>
 <body class="locked">
+<!-- v61: 白い画面の代わりの案内。出し分けは head の見張り(app.js に頼らない)。外へは何も送らない -->
+<div id="bootguide" role="alert" style="display:none">
+<div data-why="inapp" style="display:none">
+<h2><span class="g-ios">Safari</span><span class="g-and">Chrome</span> で開いてください</h2>
+<p>LINE などのアプリの中の画面では、Google のログインや記録の保存がうまくできません。</p>
+<p class="g-ios">開き方: 画面の右下か右上の「…」(または共有のボタン)を押して、「Safari で開く」を選びます。</p>
+<p class="g-and">開き方: 画面の右上の「⋮」を押して、「Chrome で開く」(または「ブラウザで開く」)を選びます。</p>
+<p>見つからない時は、下のボタンでアドレスを写して、<span class="g-ios">Safari</span><span class="g-and">Chrome</span> に貼り付けてください。</p>
+<input class="gurl" type="text" readonly aria-label="このページのアドレス">
+<button type="button" class="gmain" data-act="copy">アドレスを写す</button>
+<button type="button" data-act="close">このまま使う</button>
+</div>
+<div data-why="storage" style="display:none">
+<h2>この端末に記録を保存できません</h2>
+<p class="g-ios">iPhone の「設定」→「アプリ」→「Safari」で、「すべての Cookie をブロック」を切ってください(iOS 17 までは「設定」→「Safari」)。</p>
+<p class="g-and">Chrome の「⋮」→「設定」→「サイトの設定」で、Cookie を許可してください。</p>
+<p>プライベートブラウズ(Android はシークレット)の画面では、保存できないことがあります。ふつうの画面で開き直してください。</p>
+<button type="button" class="gmain" data-act="reload">再読み込み</button>
+<button type="button" data-act="close">閉じる(このまま使う)</button>
+</div>
+<div data-why="boot" style="display:none">
+<h2>うまく開けませんでした</h2>
+<p>電波のある所で「再読み込み」を押してください。この端末の記録は消えていません。</p>
+<button type="button" class="gmain" data-act="reload">再読み込み</button>
+<p>直らない時は、古い版が残っているかもしれません。電波のある所で、下のボタンを押してください(まだ送れていない記録は消えません)。</p>
+<button type="button" data-act="fresh">古い版を捨てて開き直す</button>
+<p>それでも直らない時は、ホーム画面のアイコンを消して、<span class="g-ios">Safari</span><span class="g-and">Chrome</span> で <b class="ghost">cats.ikezos.com</b> を開き直し、「ホーム画面に追加」をし直してください。アイコンを消すと、まだ送れていない記録が消えることがあります。</p>
+<p>LINE などのアプリの中で開いている時は、<span class="g-ios">Safari</span><span class="g-and">Chrome</span> で開いてください。</p>
+</div>
+</div>
+<script>window.catGuideInit && window.catGuideInit();</script>
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
 <!-- 自前の絵(線の絵。2026-10-27 見本)。外の部品は使っていない -->
 <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h4.5v-6h4v6h4.5V10"/></symbol>
@@ -268,12 +370,12 @@ setTimeout(function () {
 </nav>
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true" aria-label="記録の詳しい内容"></div>
 <div id="viewer" class="viewer hidden" role="dialog" aria-modal="true" aria-label="写真を大きく見る"></div>
-<script src="lib/leaflet.js?v=60"></script>
-<script src="lib/leaflet.markercluster.js?v=60"></script>
-<script src="lib/qr.js?v=60"></script>
-<script src="lib/jsQR.js?v=60"></script>
-<script src="scan.js?v=60"></script>
-<script src="config.js?v=60"></script>
-<script src="app.js?v=60"></script>
+<script src="lib/leaflet.js?v=61"></script>
+<script src="lib/leaflet.markercluster.js?v=61"></script>
+<script src="lib/qr.js?v=61"></script>
+<script src="lib/jsQR.js?v=61"></script>
+<script src="scan.js?v=61"></script>
+<script src="config.js?v=61"></script>
+<script src="app.js?v=61"></script>
 </body>
 </html>

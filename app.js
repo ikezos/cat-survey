@@ -57,8 +57,21 @@ const SEND_KEYS = ['id', 'time', 'area', 'lat', 'lng', 'acc', 'locSrc', 'color',
 const $ = s => document.querySelector(s);
 // 20261027-1050c: v26 で足した画面の部品は、古い index.html(公開直後の HTTP の控え)には無い。無い時は、画面に出ない仮の部品を返して飛ばす(起動の段の残りのボタンが止まらないように)
 const $opt = s => document.querySelector(s) || document.createElement('div');
-const cfg = () => { try { return JSON.parse(localStorage.getItem(CFG) || '{}'); } catch { return {}; } };
-const saveCfg = p => localStorage.setItem(CFG, JSON.stringify({ ...cfg(), ...p }));
+// v61(艦長 msg 10223): 保存の場所(localStorage・sessionStorage)を使う所は、すべてこの包み(LS・SS)を通す。使えない端末(Safari の「すべての Cookie をブロック」など)でも落ちず、
+// その場だけの控え(画面を閉じると消える)で続け、index.html の見張りの案内(Cookie のブロックを切る・プライベートでない画面)を出す。
+// 入れ物に触れて、書くのだけ失敗した時(容量が足りない等)は、v60 と同じに例外を返す(呼ぶ側の今までの扱いを変えない)
+const storeGuide = () => { try { if (window.catGuide) window.catGuide('storage'); } catch { /* 案内の無い古い index.html */ } };
+const safeStore = pick => {
+  const mem = new Map(), get = () => { try { return pick(); } catch { storeGuide(); return null; } };
+  return {
+    getItem(k) { if (mem.has(k)) return mem.get(k); const st = get(); if (!st) return null; try { return st.getItem(k); } catch { return null; } },
+    setItem(k, v) { v = String(v); const st = get(); if (!st) { mem.set(k, v); return; } st.setItem(k, v); mem.delete(k); },
+    removeItem(k) { mem.delete(k); const st = get(); if (st) st.removeItem(k); },
+  };
+};
+const LS = safeStore(() => localStorage), SS = safeStore(() => sessionStorage);
+const cfg = () => { try { return JSON.parse(LS.getItem(CFG) || '{}'); } catch { return {}; } };
+const saveCfg = p => LS.setItem(CFG, JSON.stringify({ ...cfg(), ...p }));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const petReasonText = r => (Array.isArray(r.petReasons) ? r.petReasons : []).map(x => x === 'その他' && r.petOther ? `その他(${r.petOther})` : x).join('、');
 const petText = r => r.pet ? `飼い猫の可能性: ${r.pet}${r.pet === 'あり' && petReasonText(r) ? '(' + petReasonText(r) + ')' : ''}` : (r.collar === 'あり' ? '飼い猫の可能性: あり(首輪)' : '');   // 古い記録で、首輪=あり・飼い猫の可能性が空の物は「あり(首輪)」とみなす(シートの値は書き換えない)
@@ -86,7 +99,7 @@ const splitColor = (c, st) => { c = String(c || ''); if (c.indexOf(COLOR_OTHER +
 // 20261027-1051: 管理者が用意した毛色の見本(AI で作った画像)から切り抜いた写真。img/coat/<名前>.webp(160)・<名前>-l.webp(320・大きく見る用)。JPEG の予備あり。
 // 写真は描いた丸の上に重ねて出す。読めなかった時は写真を外し、下の描いた丸が見える(下の error の受け)
 const COAT_PHOTOS = { 'キジトラ': 'kijitora', 'キジ白': 'kijishiro', '黒白': 'kuroshiro', '黒': 'kuro', '三毛': 'mike', '茶トラ': 'chatora', '茶白': 'chashiro', 'サバトラ': 'sabatora', 'サバ白': 'sabashiro', 'サビ': 'sabi', '白': 'shiro', '灰色(グレー)': 'hai', '灰白': 'haishiro', 'シャム系': 'siam' };
-const APP_VER = 'cat-survey-v60';   // sw.js のキャッシュの名前と同じにする
+const APP_VER = 'cat-survey-v61';   // sw.js のキャッシュの名前と同じにする
 const ASSET_V = +APP_VER.replace('cat-survey-v', '');   // sw.js の VER と同じ(APP_VER から作る)。中身が変わる物(画像)は ?v=版 を付けて読む。sw は同じ版の組を控えるので、版が違うと電波なしで出ない(v51 まで 30 のままで、毛色の見本が電波なしで出なかった)
 const coatPic = (ph, big) => `<picture><source srcset="img/coat/${ph}${big ? '-l' : ''}.webp?v=${ASSET_V}" type="image/webp"><img class="cimg" src="img/coat/${ph}${big ? '-l' : ''}.jpg?v=${ASSET_V}" alt="" decoding="async"></picture>`;
 document.addEventListener('error', e => { const t = e.target; if (t && t.classList && t.classList.contains('cimg')) { const p = t.closest('picture'); (p || t).remove(); } }, true);
@@ -159,8 +172,8 @@ const typingNow = () => !!(formTouched() || photos.length || (document.getElemen
 function maybeReload() {
   if (!wantReload) return;
   if (typingNow()) return;
-  const last = Number(sessionStorage.getItem('catSurvey.swReload') || 0); if (Date.now() - last < 60000) return;   // 続けて読み込み直さない(1回だけ)
-  sessionStorage.setItem('catSurvey.swReload', String(Date.now())); location.reload();
+  const last = Number(SS.getItem('catSurvey.swReload') || 0); if (Date.now() - last < 60000) return;   // 続けて読み込み直さない(1回だけ)
+  SS.setItem('catSurvey.swReload', String(Date.now())); location.reload();
 }
 
 // ---- IndexedDB ----
@@ -186,7 +199,7 @@ function showDbMsg() {
   if (bad) el.querySelector('.dbtext').textContent = DB_TEXT[dbState];
 }
 const dbp = new Promise((ok, ng) => {
-  let q; try { q = indexedDB.open(DB_NAME, 2); } catch { dbState = 'failed'; showDbMsg(); return ng(dbErr('failed')); }
+  let q; try { q = indexedDB.open(DB_NAME, 2); } catch { dbState = 'failed'; showDbMsg(); storeGuide(); return ng(dbErr('failed')); }
   q.onupgradeneeded = () => {
     const db = q.result;
     if (!db.objectStoreNames.contains(STORE)) { const s = db.createObjectStore(STORE, { keyPath: 'id' }); s.createIndex('status', 'status'); }
@@ -199,7 +212,7 @@ const dbp = new Promise((ok, ng) => {
     dbState = 'ready'; showDbMsg(); if (was === 'blocked') toast('使えるようになりました。保存できなかった物は、もう一度押してください', 6000);
     ok(db);
   };
-  q.onerror = () => { dbState = 'failed'; showDbMsg(); ng(dbErr('failed')); };
+  q.onerror = () => { dbState = 'failed'; showDbMsg(); storeGuide(); ng(dbErr('failed')); };
 });
 dbp.catch(() => {});
 // 読み書きに上限を付ける。時間切れの後に入れ物が開いても、その読み書きは始めない(画面で「できませんでした」と出した物が、後から黙って保存されないように)
@@ -230,7 +243,7 @@ const putSites = rs => run('readwrite', s => { rs.forEach(r => s.put(r)); }, SIT
 
 // 試作版(localStorage)の古い記録を IndexedDB へ移す。入力者の名前は持ち越さない。
 async function migrateOld() {
-  let old; try { old = JSON.parse(localStorage.getItem(OLD_KEY) || 'null'); } catch { old = null; }
+  let old; try { old = JSON.parse(LS.getItem(OLD_KEY) || 'null'); } catch { old = null; }
   if (!Array.isArray(old)) return 0;
   const out = [];
   for (const r of old) {
@@ -241,15 +254,15 @@ async function migrateOld() {
     out.push({ ...rest, recorderId: null, photos, status: sent ? 'sent' : 'pending' });
   }
   if (out.length) await putAll(out);
-  localStorage.removeItem(OLD_KEY); // 移し終えてから消す
+  LS.removeItem(OLD_KEY); // 移し終えてから消す
   return out.length;
 }
 
 // ---- ログイン(Google Identity Services / ログインカード)----
 // 端末に持つのは、Google: ID トークン(約1時間で切れる)・期限・自分のメール(表示用)・入力者ID(受け付けが返す)。名前は持たない。
 //            カード: 通行証(受け付けが返す長い乱数・90日・使うたびに延びる)・期限・呼び名・入力者ID。合言葉と番号は持たない。
-let auth = null; try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { auth = null; }
-const saveAuth = () => auth ? localStorage.setItem(AUTH_KEY, JSON.stringify(auth)) : localStorage.removeItem(AUTH_KEY);
+let auth = null; try { auth = JSON.parse(LS.getItem(AUTH_KEY) || 'null'); } catch { auth = null; }
+const saveAuth = () => auth ? LS.setItem(AUTH_KEY, JSON.stringify(auth)) : LS.removeItem(AUTH_KEY);
 let termsWait = false;   // 利用のきまりの更新の知らせを、この端末でまだ出していない今までの人(v47)
 const isCard = () => !!(auth && auth.type === 'card');
 // Google の人も、確かめが通った時に受け付けから通行証(30日・使うたびに延びる)をもらう(2026-10-26)。ID トークン(約1時間)が切れても、通行証が期限内なら入力・送信できる
@@ -387,12 +400,12 @@ function denyAccess(err) {
 const TERMS_KEY = 'catSurvey.termsNotice', TERMS_SEEN = 'seen:20261103a';   // wait=これから出す / seen:改定の番号=その改定まで見た。前の改定の印(seen など)の人には一度出す
 function termsInit() {
   try {
-    const v = localStorage.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
-    localStorage.setItem(TERMS_KEY, 'wait'); termsWait = true;
+    const v = LS.getItem(TERMS_KEY); if (v === TERMS_SEEN) return; if (v === 'wait') { termsWait = true; return; }
+    LS.setItem(TERMS_KEY, 'wait'); termsWait = true;
   } catch { termsWait = false; }   // 覚えられない端末には出さない(開くたびに出さないように)
 }
 function renderTerms() { const m = document.getElementById('termsmsg'); if (m) m.classList.toggle('hidden', !(termsWait && loggedIn())); }
-function termsOk() { termsWait = false; try { localStorage.setItem(TERMS_KEY, TERMS_SEEN); } catch { /* 覚えられない端末 */ } renderTerms(); }
+function termsOk() { termsWait = false; try { LS.setItem(TERMS_KEY, TERMS_SEEN); } catch { /* 覚えられない端末 */ } renderTerms(); }
 function logout() {
   if (auth && passValid() && configured() && navigator.onLine) post({ action: 'passRevoke', pass: auth.pass }).catch(() => {});   // 通行証(カード・Google とも)を受け付け側でも使えなくする(できなくても端末からは消す)
   auth = null; homeSrv = null; gReset(); saveAuth(); reauth = null; setScope('mine', true); closeSheet(); renderAuth();   // 端末の記録は消さない(次にログインした時に送る)
@@ -553,14 +566,14 @@ function applyMeta(r) {
   if (auth && !isCard() && r.myName != null && auth.myName !== r.myName) { auth.myName = r.myName; saveAuth(); renderMyName(); }   // 呼び名(2026-10-31 v49。カードの人は auth.name)
   if (!('options' in r)) return;   // 古い受け付けは options を返さない=何も変えない
   const before = JSON.stringify([FIELDS.map(f => f[2]), PET_REASONS]);
-  applyOptions(r.options); r.options ? localStorage.setItem(OPT_KEY, JSON.stringify(r.options)) : localStorage.removeItem(OPT_KEY);
+  applyOptions(r.options); r.options ? LS.setItem(OPT_KEY, JSON.stringify(r.options)) : LS.removeItem(OPT_KEY);
   if (before !== JSON.stringify([FIELDS.map(f => f[2]), PET_REASONS])) {
     if (formCtl && !formTouched() && $('#sheet').classList.contains('hidden')) buildForm(); else optionsDirty = true;   // 入力の途中なら、保存したあとに入れ替える
     toast('選択肢が新しくなりました', 3000);
   }
 }
 async function refreshMeta() { if (!configured() || !loggedIn() || !navigator.onLine) return; const r = await api('whoami'); applyMeta(r); }
-try { applyOptions(JSON.parse(localStorage.getItem(OPT_KEY) || 'null')); } catch { applyOptions(null); }
+try { applyOptions(JSON.parse(LS.getItem(OPT_KEY) || 'null')); } catch { applyOptions(null); }
 
 // ---- 受け付け(Apps Script)との通信 ----
 // Content-Type を text/plain にして、CORS のプリフライトを避ける。受け付けは 302 で別の URL へ飛ばすので redirect は follow。
@@ -1172,9 +1185,9 @@ function renderWhoOpts() {
 // グループで絞る(2026-10-28 その3): 管理者・全体を見る人の「全員の記録」の時だけ。すべて / 各グループ / グループなし。入力した人と一緒に効く。
 // 最後に選んだ物は端末に覚える(読めない・壊れている時は「すべて」)。グループの名前は受け付けが全員の記録の時だけ返す(groups)
 const AGRP_KEY = 'catSurvey.allGroup', AGRP_NONE = '-';
-const agrpRead = () => { try { const v = localStorage.getItem(AGRP_KEY); return v && /^(-|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
+const agrpRead = () => { try { const v = LS.getItem(AGRP_KEY); return v && /^(-|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
 let grpPick = agrpRead();
-function grpPickSave(v) { grpPick = v; try { if (v) localStorage.setItem(AGRP_KEY, v); else localStorage.removeItem(AGRP_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
+function grpPickSave(v) { grpPick = v; try { if (v) LS.setItem(AGRP_KEY, v); else LS.removeItem(AGRP_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
 const grpNames = () => (allView && allView.groups) || {};
 const grpNow = () => scope === 'all' && allView && (grpPick === AGRP_NONE || grpNames()[grpPick]) ? grpPick : '';   // 覚えていたグループが今は無い時は「すべて」で出す(覚えた物は消さない)
 const byGrp = x => { const g = grpNow(); return !g || (g === AGRP_NONE ? !x.groupId : x.groupId === g); };
@@ -1230,9 +1243,9 @@ const grpView = () => !!(loggedIn() && auth.group && auth.group.view && scope !=
 const gActive = () => grpView() && !!gview;
 const wide = () => (scope === 'all' && !!allView) || gActive();   // ほかの人の記録も出ている
 const curView = () => scope === 'all' && allView ? allView : gActive() ? gview : null;
-const gWhoRead = () => { try { const v = localStorage.getItem(GWHO_KEY); return v && /^(me|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
+const gWhoRead = () => { try { const v = LS.getItem(GWHO_KEY); return v && /^(me|[A-Za-z0-9_-]{1,64})$/.test(v) ? v : ''; } catch { return ''; } };
 let gWho = gWhoRead();
-function gWhoSave(v) { gWho = v; try { if (v) localStorage.setItem(GWHO_KEY, v); else localStorage.removeItem(GWHO_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
+function gWhoSave(v) { gWho = v; try { if (v) LS.setItem(GWHO_KEY, v); else LS.removeItem(GWHO_KEY); } catch { /* 覚えられない端末は、その場だけ */ } }
 const gWhoNow = () => gActive() ? gWho : '';
 function gReset() { listMemo.clear(); gview = null; gstat = null; gconfirm = null; gcreate = false; gcopyFail = false; gNeed = null; gName = ''; renderHomeGroup(); }
 // whoami・groupStatus の返事から、自分のグループ(名前・リーダーか・見られるか)を端末に控える(古い受け付けは group を返さない=何も変えない)
@@ -1410,10 +1423,10 @@ function readJoinFromUrl() {
   if (!q.has('join')) return false;
   const c = String(q.get('join') || '').trim().slice(0, 32); q.delete('join');
   try { history.replaceState(history.state, '', location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash); } catch { /* 消せない時も先へ */ }
-  joinCode = c || '-'; try { sessionStorage.setItem(JOIN_KEY, joinCode); } catch { /* */ }
+  joinCode = c || '-'; try { SS.setItem(JOIN_KEY, joinCode); } catch { /* */ }
   return true;
 }
-function clearJoin() { joinCode = ''; try { sessionStorage.removeItem(JOIN_KEY); } catch { /* */ } renderJoinNote(); }
+function clearJoin() { joinCode = ''; try { SS.removeItem(JOIN_KEY); } catch { /* */ } renderJoinNote(); }
 function renderJoinNote() { const n = document.getElementById('joinnote'); if (n) n.classList.toggle('hidden', !(joinCode && !loggedIn())); }
 const JOIN_BAD = '<div class="card ask"><p><b>このリンクは使えません。</b></p><p>リーダーに新しいリンクを頼んでください。</p><button type="button" class="wide" data-j="home">ホームへ</button></div>';
 async function renderJoin() {
@@ -1717,7 +1730,7 @@ function phDb() {
   return phDbp;
 }
 const phTx = (mode, fn) => phDb().then(db => new Promise((ok, ng) => { const t = db.transaction(PH_STORE, mode), r = fn(t.objectStore(PH_STORE)); t.oncomplete = () => ok(r && r.result); t.onerror = t.onabort = () => ng(t.error); }));
-const phMaxItems = () => { const n = Number(localStorage.getItem('catSurvey.phMaxItems')); return n > 0 ? n : PH_MAX_ITEMS; };   // 試し用に上限を小さくできる(ふだんは使わない)
+const phMaxItems = () => { const n = Number(LS.getItem('catSurvey.phMaxItems')); return n > 0 ? n : PH_MAX_ITEMS; };   // 試し用に上限を小さくできる(ふだんは使わない)
 // 誰の記録か: 全員の記録の中の他の人の物だけ ownerId を付ける(自分の物は付けない=受け付けがログインから決める)
 const phRef = r => ({ id: String(r.id), owner: wide() && r.mine === false && r.recorderId ? String(r.recorderId) : '' });
 const phKey = (ref, n, size) => [auth && auth.recorderId || '', ref.owner, ref.id, n, size].join('|');   // ログインした人ごとに分ける(同じ端末で別の人がログインしても、前の人の控えは出ない)
@@ -2708,7 +2721,7 @@ function scrubText(s, max = 200) {
     .replace(/\s+/g, ' ').trim();
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
-const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch { return d; } };
+const lsGet = (k, d) => { try { const v = JSON.parse(LS.getItem(k) || 'null'); return v == null ? d : v; } catch { return d; } };
 const autoErrOn = () => cfg().autoErr !== false;
 // 誤りを1件控える(同じ文は回数を足す)。最大 ERR_MAX 件(古い物から捨てる)
 function logErr(msg) {
@@ -2718,7 +2731,7 @@ function logErr(msg) {
     if (x) { x.n = (x.n || 1) + 1; x.last = now; x.screen = screenName(lastScreen); }
     else log.push({ msg: m, n: 1, first: now, last: now, screen: screenName(lastScreen) });
     log.sort((a, b) => a.last.localeCompare(b.last)); while (log.length > ERR_MAX) log.shift();
-    localStorage.setItem(ERR_KEY, JSON.stringify(log));
+    LS.setItem(ERR_KEY, JSON.stringify(log));
   } catch { /* 控えられなくても、アプリは止めない */ }
 }
 const recentErrs = () => [...lsGet(ERR_BATCH, { items: [] }).items, ...lsGet(ERR_KEY, [])].sort((a, b) => String(b.last || '').localeCompare(String(a.last || ''))).slice(0, 5).map(e => ({ msg: e.msg, n: e.n || 1 }));
@@ -2729,14 +2742,14 @@ async function autoErrFlush() {
   if (!autoErrOn() || !configured() || !loggedIn() || !navigator.onLine) return { sent: false, why: 'off' };
   let batch = lsGet(ERR_BATCH, null);
   if (!batch) {
-    if (localStorage.getItem(ERR_DAY) === todayText()) return { sent: false, why: 'today' };
+    if (LS.getItem(ERR_DAY) === todayText()) return { sent: false, why: 'today' };
     const log = lsGet(ERR_KEY, []); if (!log.length) return { sent: false, why: 'empty' };
-    batch = { items: log.map(e => ({ ...e, cid: newId('e') })) }; localStorage.setItem(ERR_BATCH, JSON.stringify(batch)); localStorage.removeItem(ERR_KEY);
+    batch = { items: log.map(e => ({ ...e, cid: newId('e') })) }; LS.setItem(ERR_BATCH, JSON.stringify(batch)); LS.removeItem(ERR_KEY);
   }
   const ver = APP_VER, device = deviceText();
   const r = await api('bugAuto', { items: batch.items.map(e => ({ msg: scrubText(e.msg), n: e.n, screen: e.screen, ver, device, cid: e.cid })) });
   if (!r.ok && (noAnswer(r.error) || ['busy', 'not_logged_in', 'id_needed'].includes(r.error))) return { sent: false, why: r.error };   // 次の回にまた
-  localStorage.removeItem(ERR_BATCH); localStorage.setItem(ERR_DAY, todayText());   // 断られた(形が違う等)時も、繰り返さない
+  LS.removeItem(ERR_BATCH); LS.setItem(ERR_DAY, todayText());   // 断られた(形が違う等)時も、繰り返さない
   return { sent: !!r.ok, added: r.added };
 }
 // 手で送る知らせ: 別の入れ物(catSurveyBugs)に置き、送れたら外す
@@ -2761,7 +2774,7 @@ async function bugFlush(quiet) {
       const r = await api('bugAdd', { bug: b.bug, photos: b.photos }, b.photos.length ? API_WAIT_PHOTO_MS : API_WAIT_MS);
       if (!r.ok && (noAnswer(r.error) || r.error === 'busy')) { last = r; break; }   // 端末に残して、後で
       await bugTx('readwrite', s => s.delete(b.cid));
-      if (r.ok) { sent++; const mineList = lsGet('catSurvey.myBugs', []); mineList.unshift(r.no); localStorage.setItem('catSurvey.myBugs', JSON.stringify(mineList.slice(0, 50))); toast(`受け付けました(番号 ${r.no})`, 6000); }
+      if (r.ok) { sent++; const mineList = lsGet('catSurvey.myBugs', []); mineList.unshift(r.no); LS.setItem('catSurvey.myBugs', JSON.stringify(mineList.slice(0, 50))); toast(`受け付けました(番号 ${r.no})`, 6000); }
       else toast(r.error === 'bug_limit' ? `不具合の知らせは、1日に ${r.max || 10} 件までです。明日また送ってください(この知らせは送れませんでした)` : `知らせを送れませんでした(${errText(r.error)})`, 8000);
       last = r;
     }
@@ -2931,7 +2944,7 @@ const UPD_EVERY_MS = 30 * 60 * 1000, STARTUP_MS = 10000, AUTO_UPD_KEY = 'catSurv
 let swReg = null, updAsked = false, updReloaded = false, updQuiet = false, lastUpdCheck = 0, userTouched = false;
 ['pointerdown', 'keydown', 'input'].forEach(t => window.addEventListener(t, () => { userTouched = true; }, { capture: true, once: true }));
 function inStartup() {   // 起動の直後で、まだ何も触っていない・入力も無い
-  return !userTouched && Date.now() - bootT0 < STARTUP_MS && !typingNow() && Date.now() - Number(sessionStorage.getItem(AUTO_UPD_KEY) || 0) > 60000;
+  return !userTouched && Date.now() - bootT0 < STARTUP_MS && !typingNow() && Date.now() - Number(SS.getItem(AUTO_UPD_KEY) || 0) > 60000;
 }
 // 入れ替えを頼む。通信の始まりと重なると、止まった古い sw がその通信で起こし直され、入れ替わりが進まない。次の開き直しの要求を持ったまま古い sw が止められ、画面が固まる(20261101。頼み直しても抜けられない)。だから通信が静かになってから1回だけ頼む
 const NET_QUIET_MS = 800, QUIET_MAX_MS = 15000, QUIET_MAX_ASKED_MS = 3000;   // ASKED: 「更新」を押した・起動の直後(5秒で読み込み直すので、その前に頼む)
@@ -2946,7 +2959,7 @@ function askSkip(w, maxMs) {
   })();
 }
 function autoUpdate(w) {   // 起動の直後だけ: 押さなくても1回だけ入れ替えて読み込み直す
-  sessionStorage.setItem(AUTO_UPD_KEY, String(Date.now())); bootMark('新しい版に自動で入れ替え');
+  SS.setItem(AUTO_UPD_KEY, String(Date.now())); bootMark('新しい版に自動で入れ替え');
   updAsked = true;
   if (w) { askSkip(w, QUIET_MAX_ASKED_MS); setTimeout(() => { if (!updReloaded) { updReloaded = true; location.reload(); } }, 5000); }
   else { updReloaded = true; location.reload(); }
@@ -2991,13 +3004,13 @@ const BOOTLOG_KEY = 'catSurvey.bootlog', bootT0 = window.catT0 || Date.now(), bo
 function bootMark(name) {
   if (bootMarks.length > 40 || bootMarks.some(x => x[0] === name)) return;
   bootMarks.push([name, Date.now() - bootT0]);
-  try { const all = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); const cur = { at: bootT0, ver: APP_VER, m: bootMarks };
-    if (all.length && all[0].at === bootT0) all[0] = cur; else all.unshift(cur); localStorage.setItem(BOOTLOG_KEY, JSON.stringify(all.slice(0, 3))); } catch { /* 保存できない時 */ }
+  try { const all = JSON.parse(LS.getItem(BOOTLOG_KEY) || '[]'); const cur = { at: bootT0, ver: APP_VER, m: bootMarks };
+    if (all.length && all[0].at === bootT0) all[0] = cur; else all.unshift(cur); LS.setItem(BOOTLOG_KEY, JSON.stringify(all.slice(0, 3))); } catch { /* 保存できない時 */ }
   renderBootLog();
 }
 function renderBootLog() {
   const el = document.getElementById('bootlog'); if (!el) return;
-  let all = []; try { all = JSON.parse(localStorage.getItem(BOOTLOG_KEY) || '[]'); } catch { all = []; }
+  let all = []; try { all = JSON.parse(LS.getItem(BOOTLOG_KEY) || '[]'); } catch { all = []; }
   const two = n => String(n).padStart(2, '0'), when = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${two(d.getHours())}:${two(d.getMinutes())}`; };
   el.textContent = all.slice(0, 2).map((x, i) => `${i ? '前回' : '今回'} ${when(x.at)} ${String(x.ver || '').replace('cat-survey-', '')}\n` + x.m.map(([k, t]) => `  ${(t / 1000).toFixed(1)}秒 ${k}`).join('\n')).join('\n') || '(まだありません)';
 }
@@ -3015,8 +3028,8 @@ function bootStep(name, fn) { try { const r = fn(); return r && typeof r.catch =
 function bootVersionOk() {
   const meta = document.querySelector('meta[name="app-ver"]'), v = meta ? meta.content : '';
   if (v === APP_VER) return true;
-  const last = Number(sessionStorage.getItem('catSurvey.verReload') || 0);
-  if (Date.now() - last > 60000) { sessionStorage.setItem('catSurvey.verReload', String(Date.now())); logErr('版の食い違い: ' + (v || '無し') + ' / ' + APP_VER); location.reload(); return false; }
+  const last = Number(SS.getItem('catSurvey.verReload') || 0);
+  if (Date.now() - last > 60000) { SS.setItem('catSurvey.verReload', String(Date.now())); logErr('版の食い違い: ' + (v || '無し') + ' / ' + APP_VER); location.reload(); return false; }
   showBootMsg('アプリの新しい版の読み込みが揃っていません。少し待ってから「開き直す」を押してください(この端末の記録は消えていません)。');
   return true;   // 読み込み直した後もまだ食い違う時は、案内を出して、そのまま先へ進む
 }
@@ -3058,7 +3071,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $opt('#home-pending-btn').onclick = e => e.currentTarget.classList.contains('zero') ? undefined : busy(e.currentTarget, () => sendPending(false), '送っています…');
   try { history.replaceState({ tab: 'home', d: 0 }, ''); } catch { /* */ }
   window.addEventListener('popstate', e => { if (coatSkipPop) { coatSkipPop = false; return; } const t = (e.state && e.state.tab) || 'home'; showTab(t, true); });
-  try { joinCode = sessionStorage.getItem(JOIN_KEY) || ''; } catch { joinCode = ''; }   // ログインの途中で開き直した時も、参加用リンクを覚えている
+  try { joinCode = SS.getItem(JOIN_KEY) || ''; } catch { joinCode = ''; }   // ログインの途中で開き直した時も、参加用リンクを覚えている
   if (readJoinFromUrl() || joinCode) { renderJoinNote(); if (loggedIn()) showTab('join'); }   // 参加用リンク(?join=)で開かれた: ログイン済みならすぐ、まだならログインの後に申し込みの画面
   $('#btn-gps').onclick = getGps;
   $('#btn-pick').onclick = () => startPick('cat', { from: loc, ok: (lat, lng) => { showTab('record'); setLoc(lat, lng, null, '地図'); }, cancel: () => showTab('record') });
